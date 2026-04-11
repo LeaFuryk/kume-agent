@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "A multimodal AI agent for personal nutrition guidance via Telegram"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "langchain-core>=0.3",
+]
 
 [project.optional-dependencies]
 dev = [
