@@ -19,14 +19,22 @@ class JSONFormatter(logging.Formatter):
         }
         if hasattr(record, "metrics"):
             log_data["metrics"] = record.metrics
+        if record.exc_info and record.exc_info[1] is not None:
+            log_data["exception"] = self.formatException(record.exc_info)
+        if record.stack_info:
+            log_data["stack_info"] = record.stack_info
         return json.dumps(log_data)
 
 
 def setup_logging(level: str = "INFO") -> None:
-    """Configure the kume logger with JSON output to stdout."""
+    """Configure the kume logger with JSON output to stdout.
+
+    Safe to call multiple times — clears existing handlers before adding a new one.
+    """
+    root = logging.getLogger("kume")
+    root.handlers.clear()
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JSONFormatter())
-    root = logging.getLogger("kume")
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
     root.addHandler(handler)
     root.propagate = False

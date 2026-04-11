@@ -21,4 +21,13 @@ class AnalyzeFoodTool(BaseTool):
 
     def _call_llm(self, prompt: str) -> str:
         response = self.llm.invoke([HumanMessage(content=prompt)])
-        return str(response.content)
+        content = response.content
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, str):
+                    parts.append(block)
+                elif isinstance(block, dict) and block.get("type") == "text":
+                    parts.append(str(block.get("text", "")))
+            return "".join(parts)
+        return str(content or "")

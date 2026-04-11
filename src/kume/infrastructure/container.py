@@ -1,3 +1,4 @@
+from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 from telegram.ext import Application, MessageHandler, filters
@@ -12,11 +13,12 @@ from kume.adapters.tools import (
     RequestReportTool,
 )
 from kume.infrastructure.config import Settings
-from kume.infrastructure.metrics import MetricsCollector
 from kume.services.orchestrator import OrchestratorService
 
 
 class Container:
+    """Dependency injection container that builds the full application graph from Settings."""
+
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
@@ -32,7 +34,7 @@ class Container:
             api_key=SecretStr(self._settings.openai_api_key),
         )
 
-    def tools(self) -> list:
+    def tools(self) -> list[BaseTool]:
         tool_llm = self.tool_llm()
         return [
             AskRecommendationTool(llm=tool_llm),
@@ -42,14 +44,11 @@ class Container:
             RequestReportTool(),
         ]
 
-    def metrics_collector(self) -> MetricsCollector:
-        return MetricsCollector()
-
     def orchestrator_service(self) -> OrchestratorService:
         return OrchestratorService(
             llm=self.orchestrator_llm(),
             tools=self.tools(),
-            metrics_collector=self.metrics_collector(),
+            max_iterations=self._settings.max_agent_iterations,
         )
 
     def telegram_application(self) -> Application:

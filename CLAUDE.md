@@ -2,10 +2,9 @@
 
 ## Notion
 - **Project name**: Kume Agent
-- **Project page**: 33f7e505-e99b-80b1-a9ab-f4c8b6980f22
-- **Tasks database**: 33f7e505-e99b-8084-b750-febbc1e3208c
-- **Tasks data source**: collection://6497e505-e99b-8248-9718-07551fec2fa9
-- **Projects data source**: collection://56e7e505-e99b-8321-a1f4-878d833d9136
+- Notion IDs are stored in `.env` to keep them out of version control.
+- Copy values from `.env.example` and fill in your own Notion workspace IDs.
+- Required variables: `NOTION_PROJECT_PAGE`, `NOTION_TASKS_DB`, `NOTION_TASKS_DS`, `NOTION_PROJECTS_DS`
 
 ## Skills
 - `notion-tasks` — Task management from Notion board. Always check Notion before starting work.

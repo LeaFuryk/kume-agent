@@ -19,7 +19,7 @@ def test_request_report_returns_coming_soon() -> None:
     assert "nutrition reports" in result.lower()
 
 
-def test_stubs_accept_arbitrary_kwargs() -> None:
-    ingest_context(file="test.pdf", user_id=123)
-    log_meal(food="pasta", calories=400)
-    request_report(period="weekly", format="pdf")
+def test_stubs_accept_arbitrary_kwargs_and_still_return_coming_soon() -> None:
+    assert "coming soon" in ingest_context(file="test.pdf", user_id=123).lower()
+    assert "coming soon" in log_meal(food="pasta", calories=400).lower()
+    assert "coming soon" in request_report(period="weekly", format="pdf").lower()

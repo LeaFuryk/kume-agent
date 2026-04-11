@@ -9,8 +9,8 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.tools import BaseTool
 
-from kume.infrastructure.metrics import MetricsCallbackHandler, MetricsCollector
-from kume.services.orchestrator import OrchestratorService
+from kume.infrastructure.metrics import MetricsCallbackHandler
+from kume.services.orchestrator import OrchestratorService, _extract_text_content
 
 
 class FakeChatModel(BaseChatModel):
@@ -53,23 +53,14 @@ def fake_tools() -> list[BaseTool]:
 
 
 @pytest.fixture()
-def metrics_collector() -> MetricsCollector:
-    return MetricsCollector()
-
-
-@pytest.fixture()
-def orchestrator(
-    fake_llm: FakeChatModel, fake_tools: list[BaseTool], metrics_collector: MetricsCollector
-) -> OrchestratorService:
+def orchestrator(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> OrchestratorService:
     return OrchestratorService(
         llm=fake_llm,
         tools=fake_tools,
-        metrics_collector=metrics_collector,
     )
 
 
 async def test_process_returns_string_response(orchestrator: OrchestratorService) -> None:
-    """process() returns a string when the agent runs successfully."""
     with patch.object(
         orchestrator._agent,
         "ainvoke",
@@ -83,7 +74,6 @@ async def test_process_returns_string_response(orchestrator: OrchestratorService
 
 
 async def test_process_returns_fallback_on_exception(orchestrator: OrchestratorService) -> None:
-    """process() returns the fallback error message when the agent raises an exception."""
     with patch.object(
         orchestrator._agent,
         "ainvoke",
@@ -95,26 +85,7 @@ async def test_process_returns_fallback_on_exception(orchestrator: OrchestratorS
     assert result == "Sorry, something went wrong. Please try again."
 
 
-async def test_process_collects_metrics(orchestrator: OrchestratorService, metrics_collector: MetricsCollector) -> None:
-    """process() calls start_request and end_request on the metrics collector."""
-    with (
-        patch.object(metrics_collector, "start_request", wraps=metrics_collector.start_request) as mock_start,
-        patch.object(metrics_collector, "end_request", wraps=metrics_collector.end_request) as mock_end,
-        patch.object(
-            orchestrator._agent,
-            "ainvoke",
-            new_callable=AsyncMock,
-            return_value={"messages": [AIMessage(content="test")]},
-        ),
-    ):
-        await orchestrator.process(telegram_id=99, text="hi")
-
-    mock_start.assert_called_once_with(99)
-    mock_end.assert_called_once()
-
-
 async def test_process_passes_callback_handler(orchestrator: OrchestratorService) -> None:
-    """process() passes a MetricsCallbackHandler to the agent's ainvoke call."""
     with patch.object(
         orchestrator._agent,
         "ainvoke",
@@ -132,7 +103,6 @@ async def test_process_passes_callback_handler(orchestrator: OrchestratorService
 
 
 async def test_process_returns_default_when_messages_empty(orchestrator: OrchestratorService) -> None:
-    """process() returns the fallback text when agent result has no messages."""
     with patch.object(
         orchestrator._agent,
         "ainvoke",
@@ -145,7 +115,6 @@ async def test_process_returns_default_when_messages_empty(orchestrator: Orchest
 
 
 async def test_process_returns_default_when_messages_key_missing(orchestrator: OrchestratorService) -> None:
-    """process() returns the fallback text when agent result has no 'messages' key."""
     with patch.object(
         orchestrator._agent,
         "ainvoke",
@@ -157,19 +126,37 @@ async def test_process_returns_default_when_messages_key_missing(orchestrator: O
     assert result == "I wasn't able to process that request."
 
 
-async def test_metrics_collected_even_on_exception(
-    orchestrator: OrchestratorService, metrics_collector: MetricsCollector
-) -> None:
-    """end_request is called even when the agent raises an exception (finally block)."""
-    with (
-        patch.object(metrics_collector, "end_request", wraps=metrics_collector.end_request) as mock_end,
-        patch.object(
-            orchestrator._agent,
-            "ainvoke",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("boom"),
-        ),
+async def test_process_handles_structured_content_blocks(orchestrator: OrchestratorService) -> None:
+    """process() extracts text from structured content blocks instead of leaking repr."""
+    structured_content = [{"type": "text", "text": "Hello from structured block"}]
+    with patch.object(
+        orchestrator._agent,
+        "ainvoke",
+        new_callable=AsyncMock,
+        return_value={"messages": [AIMessage(content=structured_content)]},
     ):
-        await orchestrator.process(telegram_id=42, text="fail")
+        result = await orchestrator.process(telegram_id=1, text="test")
 
-    mock_end.assert_called_once()
+    assert result == "Hello from structured block"
+    assert "[{" not in result
+
+
+# --- _extract_text_content tests ---
+
+
+def test_extract_text_content_string() -> None:
+    assert _extract_text_content("hello") == "hello"
+
+
+def test_extract_text_content_structured_blocks() -> None:
+    blocks = [{"type": "text", "text": "part1"}, {"type": "text", "text": "part2"}]
+    assert _extract_text_content(blocks) == "part1part2"
+
+
+def test_extract_text_content_none() -> None:
+    assert _extract_text_content(None) == ""
+
+
+def test_extract_text_content_mixed_list() -> None:
+    blocks = ["plain", {"type": "text", "text": "structured"}]
+    assert _extract_text_content(blocks) == "plainstructured"

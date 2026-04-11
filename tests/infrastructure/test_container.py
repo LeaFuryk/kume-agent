@@ -5,7 +5,6 @@ from langchain_openai import ChatOpenAI
 
 from kume.infrastructure.config import Settings
 from kume.infrastructure.container import Container
-from kume.infrastructure.metrics import MetricsCollector
 
 
 @pytest.fixture
@@ -56,17 +55,13 @@ def test_tools_returns_five_tools(container: Container) -> None:
     }
 
 
-def test_metrics_collector_returns_instance(container: Container) -> None:
-    collector = container.metrics_collector()
-    assert isinstance(collector, MetricsCollector)
-
-
 @patch("kume.services.orchestrator.create_agent")
-def test_orchestrator_service_returns_instance(mock_create_agent, container: Container) -> None:
+def test_orchestrator_service_passes_max_iterations(mock_create_agent, container: Container) -> None:
     from kume.services.orchestrator import OrchestratorService
 
     service = container.orchestrator_service()
     assert isinstance(service, OrchestratorService)
+    assert service._max_iterations == 5
     mock_create_agent.assert_called_once()
 
 
