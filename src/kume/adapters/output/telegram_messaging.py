@@ -12,11 +12,16 @@ class TelegramMessagingAdapter(MessagingPort):
         self._bot = bot
 
     async def send_message(self, chat_id: int, text: str) -> None:
-        # Split raw text first, then format each chunk independently
-        # to avoid cutting inside HTML tags
+        # Split raw text into safe chunks, format each independently,
+        # then re-split if formatting expanded beyond the limit
         for chunk in _split_message(text):
             formatted = markdown_to_telegram_html(chunk)
-            await self._bot.send_message(chat_id=chat_id, text=formatted, parse_mode=ParseMode.HTML)
+            if len(formatted) <= TELEGRAM_MAX_MESSAGE_LENGTH:
+                await self._bot.send_message(chat_id=chat_id, text=formatted, parse_mode=ParseMode.HTML)
+            else:
+                # Formatting expanded beyond limit — send as plain text chunks
+                for plain_chunk in _split_message(formatted):
+                    await self._bot.send_message(chat_id=chat_id, text=plain_chunk)
 
 
 def _split_message(text: str, max_length: int = TELEGRAM_MAX_MESSAGE_LENGTH) -> list[str]:

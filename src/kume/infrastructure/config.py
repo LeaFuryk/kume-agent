@@ -19,11 +19,14 @@ class Settings:
             raise ValueError("TELEGRAM_TOKEN environment variable is required")
         if not openai_api_key:
             raise ValueError("OPENAI_API_KEY environment variable is required")
+        max_iterations = int(os.environ.get("MAX_AGENT_ITERATIONS", "5"))
+        if max_iterations < 1:
+            raise ValueError("MAX_AGENT_ITERATIONS must be at least 1")
         return cls(
             telegram_token=telegram_token,
             openai_api_key=openai_api_key,
             orchestrator_model=os.environ.get("ORCHESTRATOR_MODEL", "gpt-4o"),
             tool_model=os.environ.get("TOOL_MODEL", "gpt-4o-mini"),
-            max_agent_iterations=int(os.environ.get("MAX_AGENT_ITERATIONS", "5")),
+            max_agent_iterations=max_iterations,
             log_level=os.environ.get("LOG_LEVEL", "INFO"),
         )
