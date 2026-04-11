@@ -36,4 +36,4 @@ disallow_untyped_defs = true
 
 [build-system]
 requires = ["hatchling"]
-build-backend = "hatchling.backends"
+build-backend = "hatchling.build"
