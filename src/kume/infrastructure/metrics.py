@@ -20,7 +20,10 @@ MODEL_PRICING: dict[str, tuple[float, float]] = {
 
 
 def _compute_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    pricing = MODEL_PRICING.get(model, (0.0, 0.0))
+    pricing = MODEL_PRICING.get(model)
+    if pricing is None:
+        logging.getLogger("kume.metrics").warning("Unknown model %r — cost will be reported as $0.00", model)
+        return 0.0
     return (input_tokens * pricing[0] / 1000) + (output_tokens * pricing[1] / 1000)
 
 
