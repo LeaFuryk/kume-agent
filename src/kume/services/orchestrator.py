@@ -54,10 +54,4 @@ class OrchestratorService:
             logger.exception("Error processing message for telegram_id=%d", telegram_id)
             return "Sorry, something went wrong. Please try again."
         finally:
-            metrics = self._metrics_collector.end_request()
-            logger.info(
-                "Request completed for telegram_id=%d, cost=$%.6f, latency=%.1fms",
-                telegram_id,
-                metrics.total_cost_usd,
-                metrics.total_latency_ms,
-            )
+            self._metrics_collector.end_request()
