@@ -1,4 +1,5 @@
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 from telegram.ext import Application, MessageHandler, filters
 
 from kume.adapters.input.telegram_bot import TelegramBotAdapter
@@ -22,13 +23,13 @@ class Container:
     def orchestrator_llm(self) -> ChatOpenAI:
         return ChatOpenAI(
             model=self._settings.orchestrator_model,
-            api_key=self._settings.openai_api_key,
+            api_key=SecretStr(self._settings.openai_api_key),
         )
 
     def tool_llm(self) -> ChatOpenAI:
         return ChatOpenAI(
             model=self._settings.tool_model,
-            api_key=self._settings.openai_api_key,
+            api_key=SecretStr(self._settings.openai_api_key),
         )
 
     def tools(self) -> list:
