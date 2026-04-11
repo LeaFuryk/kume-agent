@@ -7,30 +7,24 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
+from langchain_community.callbacks.openai_info import TokenType, get_openai_token_cost_for_model
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.outputs import LLMResult
 
 from kume.domain.metrics import LLMCallMetric, RequestMetrics, ToolExecutionMetric
 
-MODEL_PRICING: dict[str, tuple[float, float]] = {
-    # (input_cost_per_1k_tokens, output_cost_per_1k_tokens)
-    "gpt-4o": (0.0025, 0.01),
-    "gpt-4o-mini": (0.00015, 0.0006),
-    "gpt-4-turbo": (0.01, 0.03),
-    "gpt-4": (0.03, 0.06),
-    "gpt-3.5-turbo": (0.0005, 0.0015),
-    "o1": (0.015, 0.06),
-    "o1-mini": (0.003, 0.012),
-    "o3-mini": (0.0011, 0.0044),
-}
+logger = logging.getLogger("kume.metrics")
 
 
 def _compute_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    pricing = MODEL_PRICING.get(model)
-    if pricing is None:
-        logging.getLogger("kume.metrics").warning("Unknown model %r — cost will be reported as $0.00", model)
+    """Compute cost using LangChain's built-in OpenAI pricing table."""
+    try:
+        input_cost = get_openai_token_cost_for_model(model, input_tokens, token_type=TokenType.PROMPT)
+        output_cost = get_openai_token_cost_for_model(model, output_tokens, token_type=TokenType.COMPLETION)
+        return input_cost + output_cost
+    except ValueError:
+        logger.warning("Unknown model %r — cost will be reported as $0.00", model)
         return 0.0
-    return (input_tokens * pricing[0] / 1000) + (output_tokens * pricing[1] / 1000)
 
 
 def _metrics_to_dict(metrics: RequestMetrics) -> dict[str, Any]:
@@ -69,7 +63,6 @@ class MetricsCollector:
             llm_calls=list(self._llm_calls),
             tool_executions=list(self._tool_executions),
         )
-        logger = logging.getLogger("kume.metrics")
         logger.info("request_metrics", extra={"metrics": _metrics_to_dict(metrics)})
         return metrics
 
