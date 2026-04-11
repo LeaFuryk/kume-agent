@@ -247,8 +247,9 @@ class TestMetricsToDict:
         collector = MetricsCollector()
         collector.start_request(telegram_id=7)
         collector.record_llm_call(
-            LLMCallMetric(model="gpt-4o", input_tokens=50, output_tokens=25, cost_usd=0.001, latency_ms=100.0,
-                          purpose="test")
+            LLMCallMetric(
+                model="gpt-4o", input_tokens=50, output_tokens=25, cost_usd=0.001, latency_ms=100.0, purpose="test"
+            )
         )
         collector.record_tool_execution(ToolExecutionMetric(tool_name="search", latency_ms=30.0, success=True))
         metrics = collector.end_request()
@@ -295,8 +296,13 @@ class TestJSONLogging:
     def test_json_formatter_includes_metrics_extra(self) -> None:
         formatter = JSONFormatter()
         record = logging.LogRecord(
-            name="kume.metrics", level=logging.INFO, pathname="", lineno=0, msg="request_metrics", args=(),
-            exc_info=None
+            name="kume.metrics",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="request_metrics",
+            args=(),
+            exc_info=None,
         )
         record.metrics = {"total_cost_usd": 0.01}  # type: ignore[attr-defined]
         output = formatter.format(record)

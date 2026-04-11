@@ -74,9 +74,7 @@ class MetricsCallbackHandler(BaseCallbackHandler):
         self._tool_start_times: dict[str, float] = {}
         self._tool_names: dict[str, str] = {}
 
-    def on_llm_start(
-        self, serialized: dict[str, Any], prompts: list[str], *, run_id: Any, **kwargs: Any
-    ) -> None:
+    def on_llm_start(self, serialized: dict[str, Any], prompts: list[str], *, run_id: Any, **kwargs: Any) -> None:
         self._llm_start_times[str(run_id)] = time.monotonic()
 
     def on_llm_end(self, response: LLMResult, *, run_id: Any, **kwargs: Any) -> None:
@@ -98,9 +96,7 @@ class MetricsCallbackHandler(BaseCallbackHandler):
             )
         )
 
-    def on_tool_start(
-        self, serialized: dict[str, Any], input_str: str, *, run_id: Any, **kwargs: Any
-    ) -> None:
+    def on_tool_start(self, serialized: dict[str, Any], input_str: str, *, run_id: Any, **kwargs: Any) -> None:
         self._tool_start_times[str(run_id)] = time.monotonic()
         self._tool_names[str(run_id)] = serialized.get("name", "unknown")
 
@@ -108,9 +104,7 @@ class MetricsCallbackHandler(BaseCallbackHandler):
         start = self._tool_start_times.pop(str(run_id), time.monotonic())
         latency = (time.monotonic() - start) * 1000
         tool_name = self._tool_names.pop(str(run_id), "unknown")
-        self.collector.record_tool_execution(
-            ToolExecutionMetric(tool_name=tool_name, latency_ms=latency, success=True)
-        )
+        self.collector.record_tool_execution(ToolExecutionMetric(tool_name=tool_name, latency_ms=latency, success=True))
 
     def on_tool_error(self, error: BaseException, *, run_id: Any, **kwargs: Any) -> None:
         start = self._tool_start_times.pop(str(run_id), time.monotonic())
