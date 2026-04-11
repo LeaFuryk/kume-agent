@@ -92,9 +92,14 @@ class TestMetricsCollector:
         collector.record_llm_call(llm_metric)
         metrics = collector.end_request()
 
-        # Mutating the returned list should not affect internal state
+        # Verify the returned list has the recorded metric
+        assert len(metrics.llm_calls) == 1
+        assert metrics.llm_calls[0] is llm_metric
+
+        # Mutating the returned list should not affect future requests
+        original_len = len(metrics.llm_calls)
         metrics.llm_calls.clear()
-        # The internal list was already snapshotted, so this is just verifying immutability intent
+        assert original_len == 1
 
     def test_end_request_logs_metrics(self, caplog: pytest.LogCaptureFixture) -> None:
         collector = MetricsCollector()
