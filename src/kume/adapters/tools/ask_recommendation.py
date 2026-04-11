@@ -23,4 +23,4 @@ class AskRecommendationTool(BaseTool):
 
     def _call_llm(self, prompt: str) -> str:
         response = self.llm.invoke([HumanMessage(content=prompt)])
-        return str(response.content)
+        return str(response.content or "")

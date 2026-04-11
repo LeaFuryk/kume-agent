@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from telegram import Bot
+from telegram.constants import ParseMode
 
 from kume.adapters.output.telegram_messaging import TelegramMessagingAdapter
 from kume.ports.output.messaging import MessagingPort
@@ -19,10 +20,10 @@ def adapter(bot: MagicMock) -> TelegramMessagingAdapter:
     return TelegramMessagingAdapter(bot=bot)
 
 
-async def test_send_message_calls_bot(adapter: TelegramMessagingAdapter, bot: MagicMock) -> None:
+async def test_send_message_calls_bot_with_html_parse_mode(adapter: TelegramMessagingAdapter, bot: MagicMock) -> None:
     await adapter.send_message(chat_id=12345, text="Hello!")
 
-    bot.send_message.assert_awaited_once_with(chat_id=12345, text="Hello!")
+    bot.send_message.assert_awaited_once_with(chat_id=12345, text="Hello!", parse_mode=ParseMode.HTML)
 
 
 def test_implements_messaging_port(adapter: TelegramMessagingAdapter) -> None:

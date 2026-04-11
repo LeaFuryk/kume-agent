@@ -8,6 +8,8 @@ from kume.services.orchestrator import OrchestratorService
 
 logger = logging.getLogger("kume.telegram")
 
+MAX_MESSAGE_LENGTH = 4096
+
 
 class TelegramBotAdapter:
     def __init__(
@@ -30,6 +32,12 @@ class TelegramBotAdapter:
         telegram_id = update.effective_user.id if update.effective_user else 0
         chat_id = update.effective_chat.id if update.effective_chat else 0
         text = update.message.text
+
+        if len(text) > MAX_MESSAGE_LENGTH:
+            await self._messaging.send_message(
+                chat_id, "Your message is too long. Please keep it under 4096 characters."
+            )
+            return
 
         logger.info("Received message from telegram_id=%d", telegram_id)
 

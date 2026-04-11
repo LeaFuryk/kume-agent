@@ -2,10 +2,10 @@
 
 ## Notion
 - **Project name**: Kume Agent
-- **Project page**: 33f7e505-e99b-80b1-a9ab-f4c8b6980f22
-- **Tasks database**: 33f7e505-e99b-8084-b750-febbc1e3208c
-- **Tasks data source**: collection://6497e505-e99b-8248-9718-07551fec2fa9
-- **Projects data source**: collection://56e7e505-e99b-8321-a1f4-878d833d9136
+- **Project page**: (set in local config)
+- **Tasks database**: (set in local config)
+- **Tasks data source**: (set in local config)
+- **Projects data source**: (set in local config)
 
 ## Skills
 - `notion-tasks` — Task management from Notion board. Always check Notion before starting work.
