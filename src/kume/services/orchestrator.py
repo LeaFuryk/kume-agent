@@ -76,7 +76,9 @@ class OrchestratorService:
             )
             messages = result.get("messages", [])
             if messages:
-                return _extract_text_content(messages[-1].content)
+                text = _extract_text_content(messages[-1].content)
+                if text.strip():
+                    return text
             return "I wasn't able to process that request."
         except Exception:
             logger.exception("Error processing message for telegram_id=%d", telegram_id)

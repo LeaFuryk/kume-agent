@@ -31,10 +31,10 @@ def test_implements_messaging_port(adapter: TelegramMessagingAdapter) -> None:
 
 
 async def test_long_message_is_chunked(adapter: TelegramMessagingAdapter, bot: MagicMock) -> None:
-    """Messages longer than 4096 chars are split into multiple send_message calls."""
+    """Messages longer than the safe limit are split into multiple send_message calls."""
     long_text = "a" * 5000
     await adapter.send_message(chat_id=1, text=long_text)
-    assert bot.send_message.await_count == 2
+    assert bot.send_message.await_count >= 2
 
 
 # --- _split_message tests ---

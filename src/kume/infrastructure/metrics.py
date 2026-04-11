@@ -16,6 +16,12 @@ MODEL_PRICING: dict[str, tuple[float, float]] = {
     # (input_cost_per_1k_tokens, output_cost_per_1k_tokens)
     "gpt-4o": (0.0025, 0.01),
     "gpt-4o-mini": (0.00015, 0.0006),
+    "gpt-4-turbo": (0.01, 0.03),
+    "gpt-4": (0.03, 0.06),
+    "gpt-3.5-turbo": (0.0005, 0.0015),
+    "o1": (0.015, 0.06),
+    "o1-mini": (0.003, 0.012),
+    "o3-mini": (0.0011, 0.0044),
 }
 
 
