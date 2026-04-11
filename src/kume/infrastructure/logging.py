@@ -27,10 +27,14 @@ class JSONFormatter(logging.Formatter):
 
 
 def setup_logging(level: str = "INFO") -> None:
-    """Configure the kume logger with JSON output to stdout."""
+    """Configure the kume logger with JSON output to stdout.
+
+    Safe to call multiple times — clears existing handlers before adding a new one.
+    """
+    root = logging.getLogger("kume")
+    root.handlers.clear()
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JSONFormatter())
-    root = logging.getLogger("kume")
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
     root.addHandler(handler)
     root.propagate = False
