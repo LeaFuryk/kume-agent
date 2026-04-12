@@ -226,11 +226,21 @@ class TestMeal:
 
     def test_immutability(self) -> None:
         meal = Meal(
-            id="m-1", user_id="u-1", description="pizza",
-            calories=550.0, protein_g=22.0, carbs_g=58.0, fat_g=26.0,
-            fiber_g=3.0, sodium_mg=1200.0, sugar_g=5.0,
-            saturated_fat_g=10.0, cholesterol_mg=45.0,
-            confidence=0.75, image_present=True, logged_at=NOW,
+            id="m-1",
+            user_id="u-1",
+            description="pizza",
+            calories=550.0,
+            protein_g=22.0,
+            carbs_g=58.0,
+            fat_g=26.0,
+            fiber_g=3.0,
+            sodium_mg=1200.0,
+            sugar_g=5.0,
+            saturated_fat_g=10.0,
+            cholesterol_mg=45.0,
+            confidence=0.75,
+            image_present=True,
+            logged_at=NOW,
         )
         with pytest.raises(AttributeError):
             meal.calories = 600.0  # type: ignore[misc]
@@ -239,11 +249,21 @@ class TestMeal:
 
     def test_field_types(self) -> None:
         meal = Meal(
-            id="m-1", user_id="u-1", description="pizza",
-            calories=550.0, protein_g=22.0, carbs_g=58.0, fat_g=26.0,
-            fiber_g=3.0, sodium_mg=1200.0, sugar_g=5.0,
-            saturated_fat_g=10.0, cholesterol_mg=45.0,
-            confidence=0.75, image_present=True, logged_at=NOW,
+            id="m-1",
+            user_id="u-1",
+            description="pizza",
+            calories=550.0,
+            protein_g=22.0,
+            carbs_g=58.0,
+            fat_g=26.0,
+            fiber_g=3.0,
+            sodium_mg=1200.0,
+            sugar_g=5.0,
+            saturated_fat_g=10.0,
+            cholesterol_mg=45.0,
+            confidence=0.75,
+            image_present=True,
+            logged_at=NOW,
         )
         assert isinstance(meal.calories, float)
         assert isinstance(meal.confidence, float)
@@ -255,9 +275,15 @@ class TestNutritionEstimate:
     def test_creation(self) -> None:
         est = NutritionEstimate(
             description="2 slices pepperoni pizza",
-            calories=550.0, protein_g=22.0, carbs_g=58.0, fat_g=26.0,
-            fiber_g=3.0, sodium_mg=1200.0, sugar_g=5.0,
-            saturated_fat_g=10.0, cholesterol_mg=45.0,
+            calories=550.0,
+            protein_g=22.0,
+            carbs_g=58.0,
+            fat_g=26.0,
+            fiber_g=3.0,
+            sodium_mg=1200.0,
+            sugar_g=5.0,
+            saturated_fat_g=10.0,
+            cholesterol_mg=45.0,
             confidence=0.8,
         )
         assert est.description == "2 slices pepperoni pizza"
@@ -267,9 +293,15 @@ class TestNutritionEstimate:
     def test_immutability(self) -> None:
         est = NutritionEstimate(
             description="pizza",
-            calories=550.0, protein_g=22.0, carbs_g=58.0, fat_g=26.0,
-            fiber_g=3.0, sodium_mg=1200.0, sugar_g=5.0,
-            saturated_fat_g=10.0, cholesterol_mg=45.0,
+            calories=550.0,
+            protein_g=22.0,
+            carbs_g=58.0,
+            fat_g=26.0,
+            fiber_g=3.0,
+            sodium_mg=1200.0,
+            sugar_g=5.0,
+            saturated_fat_g=10.0,
+            cholesterol_mg=45.0,
             confidence=0.8,
         )
         with pytest.raises(AttributeError):
