@@ -62,3 +62,41 @@ class LabMarker:
     unit: str  # "mg/dL"
     reference_range: str  # "< 200 mg/dL"
     date: datetime
+
+
+@dataclass(frozen=True)
+class Meal:
+    """A logged meal with nutritional breakdown."""
+
+    id: str
+    user_id: str
+    description: str
+    calories: float
+    protein_g: float
+    carbs_g: float
+    fat_g: float
+    fiber_g: float
+    sodium_mg: float
+    sugar_g: float
+    saturated_fat_g: float
+    cholesterol_mg: float
+    confidence: float  # 0.0–1.0
+    image_present: bool
+    logged_at: datetime
+
+
+@dataclass(frozen=True)
+class NutritionEstimate:
+    """Intermediate output from vision analysis, before becoming a Meal."""
+
+    description: str
+    calories: float
+    protein_g: float
+    carbs_g: float
+    fat_g: float
+    fiber_g: float
+    sodium_mg: float
+    sugar_g: float
+    saturated_fat_g: float
+    cholesterol_mg: float
+    confidence: float

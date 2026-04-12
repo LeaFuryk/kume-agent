@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pytest
 
-from kume.domain.entities import Document, Goal, LabMarker, Restriction, User
+from kume.domain.entities import Document, Goal, LabMarker, Meal, NutritionEstimate, Restriction, User
 
 NOW = datetime(2026, 1, 15, 10, 30, 0)
 
@@ -187,3 +187,90 @@ class TestLabMarker:
         assert isinstance(marker.value, float)
         assert isinstance(marker.unit, str)
         assert isinstance(marker.date, datetime)
+
+
+class TestMeal:
+    def test_creation(self) -> None:
+        meal = Meal(
+            id="m-1",
+            user_id="u-1",
+            description="2 slices pepperoni pizza",
+            calories=550.0,
+            protein_g=22.0,
+            carbs_g=58.0,
+            fat_g=26.0,
+            fiber_g=3.0,
+            sodium_mg=1200.0,
+            sugar_g=5.0,
+            saturated_fat_g=10.0,
+            cholesterol_mg=45.0,
+            confidence=0.75,
+            image_present=True,
+            logged_at=NOW,
+        )
+        assert meal.id == "m-1"
+        assert meal.user_id == "u-1"
+        assert meal.description == "2 slices pepperoni pizza"
+        assert meal.calories == 550.0
+        assert meal.protein_g == 22.0
+        assert meal.carbs_g == 58.0
+        assert meal.fat_g == 26.0
+        assert meal.fiber_g == 3.0
+        assert meal.sodium_mg == 1200.0
+        assert meal.sugar_g == 5.0
+        assert meal.saturated_fat_g == 10.0
+        assert meal.cholesterol_mg == 45.0
+        assert meal.confidence == 0.75
+        assert meal.image_present is True
+        assert meal.logged_at == NOW
+
+    def test_immutability(self) -> None:
+        meal = Meal(
+            id="m-1", user_id="u-1", description="pizza",
+            calories=550.0, protein_g=22.0, carbs_g=58.0, fat_g=26.0,
+            fiber_g=3.0, sodium_mg=1200.0, sugar_g=5.0,
+            saturated_fat_g=10.0, cholesterol_mg=45.0,
+            confidence=0.75, image_present=True, logged_at=NOW,
+        )
+        with pytest.raises(AttributeError):
+            meal.calories = 600.0  # type: ignore[misc]
+        with pytest.raises(AttributeError):
+            meal.description = "salad"  # type: ignore[misc]
+
+    def test_field_types(self) -> None:
+        meal = Meal(
+            id="m-1", user_id="u-1", description="pizza",
+            calories=550.0, protein_g=22.0, carbs_g=58.0, fat_g=26.0,
+            fiber_g=3.0, sodium_mg=1200.0, sugar_g=5.0,
+            saturated_fat_g=10.0, cholesterol_mg=45.0,
+            confidence=0.75, image_present=True, logged_at=NOW,
+        )
+        assert isinstance(meal.calories, float)
+        assert isinstance(meal.confidence, float)
+        assert isinstance(meal.image_present, bool)
+        assert isinstance(meal.logged_at, datetime)
+
+
+class TestNutritionEstimate:
+    def test_creation(self) -> None:
+        est = NutritionEstimate(
+            description="2 slices pepperoni pizza",
+            calories=550.0, protein_g=22.0, carbs_g=58.0, fat_g=26.0,
+            fiber_g=3.0, sodium_mg=1200.0, sugar_g=5.0,
+            saturated_fat_g=10.0, cholesterol_mg=45.0,
+            confidence=0.8,
+        )
+        assert est.description == "2 slices pepperoni pizza"
+        assert est.calories == 550.0
+        assert est.confidence == 0.8
+
+    def test_immutability(self) -> None:
+        est = NutritionEstimate(
+            description="pizza",
+            calories=550.0, protein_g=22.0, carbs_g=58.0, fat_g=26.0,
+            fiber_g=3.0, sodium_mg=1200.0, sugar_g=5.0,
+            saturated_fat_g=10.0, cholesterol_mg=45.0,
+            confidence=0.8,
+        )
+        with pytest.raises(AttributeError):
+            est.calories = 600.0  # type: ignore[misc]
