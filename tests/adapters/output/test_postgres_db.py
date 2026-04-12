@@ -12,15 +12,17 @@ from kume.adapters.output.postgres_db import (
     PostgresDocumentRepository,
     PostgresGoalRepository,
     PostgresLabMarkerRepository,
+    PostgresMealRepository,
     PostgresRestrictionRepository,
     PostgresUserRepository,
 )
 from kume.adapters.output.postgres_models import Base
-from kume.domain.entities import Document, Goal, LabMarker, Restriction
+from kume.domain.entities import Document, Goal, LabMarker, Meal, Restriction
 from kume.ports.output.repositories import (
     DocumentRepository,
     GoalRepository,
     LabMarkerRepository,
+    MealRepository,
     RestrictionRepository,
     UserRepository,
 )
@@ -59,6 +61,10 @@ def test_document_repo_implements_interface() -> None:
 
 def test_lab_marker_repo_implements_interface() -> None:
     assert issubclass(PostgresLabMarkerRepository, LabMarkerRepository)
+
+
+def test_meal_repo_implements_interface() -> None:
+    assert issubclass(PostgresMealRepository, MealRepository)
 
 
 # --- UserRepository ---
@@ -216,3 +222,98 @@ async def test_lab_markers_save_and_get(session_factory) -> None:
     markers = await marker_repo.get_by_user(user.id)
     assert len(markers) == 1
     assert markers[0].name == "CHOLESTEROL"
+
+
+# --- MealRepository ---
+
+
+def _make_meal(user_id: str, description: str = "Grilled chicken salad", logged_at: datetime | None = None) -> Meal:
+    return Meal(
+        id=str(uuid.uuid4()),
+        user_id=user_id,
+        description=description,
+        calories=450.0,
+        protein_g=35.0,
+        carbs_g=20.0,
+        fat_g=15.0,
+        fiber_g=5.0,
+        sodium_mg=600.0,
+        sugar_g=3.0,
+        saturated_fat_g=4.0,
+        cholesterol_mg=85.0,
+        confidence=0.85,
+        image_present=True,
+        logged_at=logged_at or datetime.now(tz=UTC),
+    )
+
+
+async def test_meal_save_and_get(session_factory) -> None:
+    user_repo = PostgresUserRepository(session_factory)
+    user = await user_repo.get_or_create(telegram_id=1)
+    meal_repo = PostgresMealRepository(session_factory)
+
+    meal = _make_meal(user.id)
+    await meal_repo.save(meal)
+
+    meals = await meal_repo.get_by_user(user.id)
+    assert len(meals) == 1
+    assert meals[0].description == "Grilled chicken salad"
+    assert meals[0].calories == 450.0
+    assert meals[0].protein_g == 35.0
+    assert meals[0].image_present is True
+    assert meals[0].confidence == 0.85
+
+
+async def test_meal_get_by_user_filters_by_date(session_factory) -> None:
+    user_repo = PostgresUserRepository(session_factory)
+    user = await user_repo.get_or_create(telegram_id=1)
+    meal_repo = PostgresMealRepository(session_factory)
+
+    old_meal = _make_meal(user.id, description="Old meal", logged_at=datetime(2024, 1, 1, tzinfo=UTC))
+    recent_meal = _make_meal(user.id, description="Recent meal", logged_at=datetime(2024, 6, 15, tzinfo=UTC))
+    await meal_repo.save(old_meal)
+    await meal_repo.save(recent_meal)
+
+    since = datetime(2024, 6, 1, tzinfo=UTC)
+    meals = await meal_repo.get_by_user(user.id, since=since)
+    assert len(meals) == 1
+    assert meals[0].description == "Recent meal"
+
+
+async def test_meal_get_by_user_with_limit(session_factory) -> None:
+    user_repo = PostgresUserRepository(session_factory)
+    user = await user_repo.get_or_create(telegram_id=1)
+    meal_repo = PostgresMealRepository(session_factory)
+
+    for i in range(5):
+        meal = _make_meal(user.id, description=f"Meal {i}", logged_at=datetime(2024, 6, i + 1, tzinfo=UTC))
+        await meal_repo.save(meal)
+
+    meals = await meal_repo.get_by_user(user.id, limit=3)
+    assert len(meals) == 3
+    # Results ordered by logged_at desc, so most recent first
+    assert meals[0].description == "Meal 4"
+
+
+async def test_meal_user_isolation(session_factory) -> None:
+    user_repo = PostgresUserRepository(session_factory)
+    u1 = await user_repo.get_or_create(telegram_id=1)
+    u2 = await user_repo.get_or_create(telegram_id=2)
+    meal_repo = PostgresMealRepository(session_factory)
+
+    await meal_repo.save(_make_meal(u1.id, description="U1 meal"))
+    await meal_repo.save(_make_meal(u2.id, description="U2 meal"))
+
+    u1_meals = await meal_repo.get_by_user(u1.id)
+    u2_meals = await meal_repo.get_by_user(u2.id)
+
+    assert len(u1_meals) == 1
+    assert u1_meals[0].description == "U1 meal"
+    assert len(u2_meals) == 1
+    assert u2_meals[0].description == "U2 meal"
+
+
+async def test_meal_empty_results(session_factory) -> None:
+    meal_repo = PostgresMealRepository(session_factory)
+    meals = await meal_repo.get_by_user("nonexistent-user-id")
+    assert meals == []
