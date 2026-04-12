@@ -1,24 +1,104 @@
-from typing import Any
+from __future__ import annotations
 
-from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
+from datetime import datetime
+
+from kume.domain.entities import Document, Goal, LabMarker, Restriction, User
+from kume.ports.output.llm import LLMPort
+from kume.ports.output.repositories import (
+    DocumentRepository,
+    EmbeddingRepository,
+    GoalRepository,
+    LabMarkerRepository,
+    RestrictionRepository,
+    UserRepository,
+)
 
 
-class FakeChatModel(BaseChatModel):
-    """A minimal BaseChatModel implementation for testing."""
+class FakeLLMPort(LLMPort):
+    """A minimal LLMPort implementation for testing."""
 
-    response_text: str = "fake response"
+    def __init__(self, response_text: str = "fake response") -> None:
+        self.response_text = response_text
 
-    @property
-    def _llm_type(self) -> str:
-        return "fake"
+    async def complete(self, system_prompt: str, user_prompt: str) -> str:
+        return self.response_text
 
-    def _generate(
+
+class FakeUserRepository(UserRepository):
+    """A minimal UserRepository implementation for testing."""
+
+    def __init__(self) -> None:
+        self.updated_users: list[User] = []
+
+    async def get_or_create(self, telegram_id: int, name: str | None = None, language: str = "en") -> User:
+        return User(id="fake-user", telegram_id=telegram_id, name=name, language=language)
+
+    async def update(self, user: User) -> None:
+        self.updated_users.append(user)
+
+
+class FakeGoalRepository(GoalRepository):
+    """A minimal GoalRepository implementation for testing."""
+
+    def __init__(self) -> None:
+        self.saved_goals: list[Goal] = []
+
+    async def save(self, goal: Goal) -> None:
+        self.saved_goals.append(goal)
+
+    async def get_by_user(self, user_id: str, active_only: bool = True) -> list[Goal]:
+        return []
+
+
+class FakeRestrictionRepository(RestrictionRepository):
+    """A minimal RestrictionRepository implementation for testing."""
+
+    def __init__(self) -> None:
+        self.saved_restrictions: list[Restriction] = []
+
+    async def save(self, restriction: Restriction) -> None:
+        self.saved_restrictions.append(restriction)
+
+    async def get_by_user(self, user_id: str, active_only: bool = True) -> list[Restriction]:
+        return []
+
+
+class FakeDocumentRepository(DocumentRepository):
+    """A minimal DocumentRepository implementation for testing."""
+
+    def __init__(self) -> None:
+        self.saved_docs: list[Document] = []
+
+    async def save(self, doc: Document) -> None:
+        self.saved_docs.append(doc)
+
+
+class FakeEmbeddingRepository(EmbeddingRepository):
+    """A minimal EmbeddingRepository implementation for testing."""
+
+    def __init__(self) -> None:
+        self.embedded: list[tuple[str, str, list[str]]] = []
+
+    async def embed_chunks(self, user_id: str, document_id: str, chunks: list[str]) -> None:
+        self.embedded.append((user_id, document_id, chunks))
+
+    async def search(self, user_id: str, query: str, k: int = 5) -> list[str]:
+        return []
+
+
+class FakeLabMarkerRepository(LabMarkerRepository):
+    """A minimal LabMarkerRepository implementation for testing."""
+
+    def __init__(self) -> None:
+        self.saved_markers: list[list[LabMarker]] = []
+
+    async def save_many(self, markers: list[LabMarker]) -> None:
+        self.saved_markers.append(markers)
+
+    async def get_by_user(
         self,
-        messages: list[BaseMessage],
-        stop: list[str] | None = None,
-        run_manager: Any = None,
-        **kwargs: Any,
-    ) -> ChatResult:
-        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=self.response_text))])
+        user_id: str,
+        name: str | None = None,
+        since: datetime | None = None,
+    ) -> list[LabMarker]:
+        return []
