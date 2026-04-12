@@ -9,7 +9,7 @@ def test_speech_to_text_port_cannot_be_instantiated() -> None:
 
 
 class _FakeSpeechToText(SpeechToTextPort):
-    async def transcribe(self, audio_bytes: bytes, language: str = "es") -> str:
+    async def transcribe(self, audio_bytes: bytes, language: str = "es", *, mime_type: str | None = None) -> str:
         return f"transcribed:{language}"
 
 

@@ -20,7 +20,7 @@ class TestAudioProcessor:
         result = await processor.process(b"fake-audio-bytes")
 
         assert result == "Hoy desayune avena con frutas"
-        mock_stt.transcribe.assert_awaited_once_with(b"fake-audio-bytes")
+        mock_stt.transcribe.assert_awaited_once_with(b"fake-audio-bytes", language="es", mime_type=None)
 
     @pytest.mark.asyncio
     async def test_passes_raw_bytes_unchanged(self) -> None:
@@ -31,4 +31,15 @@ class TestAudioProcessor:
         processor = AudioProcessor(stt=mock_stt)
         await processor.process(audio_data)
 
-        mock_stt.transcribe.assert_awaited_once_with(audio_data)
+        mock_stt.transcribe.assert_awaited_once_with(audio_data, language="es", mime_type=None)
+
+    @pytest.mark.asyncio
+    async def test_passes_mime_type_to_stt(self) -> None:
+        mock_stt = AsyncMock(spec=SpeechToTextPort)
+        mock_stt.transcribe.return_value = "transcribed"
+
+        processor = AudioProcessor(stt=mock_stt)
+        result = await processor.process(b"audio-data", mime_type="audio/mpeg")
+
+        assert result == "transcribed"
+        mock_stt.transcribe.assert_awaited_once_with(b"audio-data", language="es", mime_type="audio/mpeg")

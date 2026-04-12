@@ -10,7 +10,9 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.tools import BaseTool
 
 from kume.infrastructure.metrics import MetricsCallbackHandler
+from kume.infrastructure.request_context import get_context
 from kume.services.orchestrator import OrchestratorService, _extract_text_content
+from tests.adapters.tools.conftest import FakeUserRepository
 
 
 class FakeChatModel(BaseChatModel):
@@ -139,6 +141,26 @@ async def test_process_handles_structured_content_blocks(orchestrator: Orchestra
 
     assert result == "Hello from structured block"
     assert "[{" not in result
+
+
+async def test_process_sets_request_context_via_contextvar(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
+    """process() sets RequestContext contextvar when user_repo is provided."""
+    user_repo = FakeUserRepository()
+    orch = OrchestratorService(llm=fake_llm, tools=fake_tools, user_repo=user_repo)
+
+    with patch.object(
+        orch._agent,
+        "ainvoke",
+        new_callable=AsyncMock,
+        return_value={"messages": [AIMessage(content="ok")]},
+    ):
+        await orch.process(telegram_id=99, text="hi")
+
+    ctx = get_context()
+    assert ctx is not None
+    assert ctx.user_id == "fake-user"
+    assert ctx.telegram_id == 99
+    assert ctx.language == "en"
 
 
 # --- _extract_text_content tests ---

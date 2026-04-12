@@ -8,11 +8,11 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, ConfigDict, Field
 
 from kume.domain.entities import Goal
+from kume.infrastructure.request_context import get_context
 from kume.ports.output.repositories import GoalRepository
 
 
 class SaveGoalInput(BaseModel):
-    user_id: str = Field(description="The user's unique identifier")
     description: str = Field(description="Description of the nutrition or health goal")
 
 
@@ -23,6 +23,10 @@ class SaveGoalTool(BaseTool):
         The agent calls .invoke()/.ainvoke() (public API).
         LangChain dispatches to _run() (sync) or _arun() (async) internally.
         _run() is a required sync fallback; _arun() is the primary async path.
+
+    User identity:
+        The orchestrator sets user_id via contextvars before each request.
+        This avoids trusting the LLM to supply user_id.
     """
 
     name: str = "save_goal"
@@ -32,15 +36,18 @@ class SaveGoalTool(BaseTool):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    def _run(self, user_id: str, description: str) -> str:
+    def _run(self, description: str) -> str:
         """Sync fallback — required by LangChain's BaseTool contract."""
-        return asyncio.get_event_loop().run_until_complete(self._arun(user_id=user_id, description=description))
+        return asyncio.get_event_loop().run_until_complete(self._arun(description=description))
 
-    async def _arun(self, user_id: str, description: str) -> str:
+    async def _arun(self, description: str) -> str:
         """Primary async entry point — called by LangChain's agent via .ainvoke()."""
+        ctx = get_context()
+        if not ctx:
+            return "Error: user_id not set. Cannot save goal."
         goal = Goal(
             id=str(uuid4()),
-            user_id=user_id,
+            user_id=ctx.user_id,
             description=description,
             created_at=datetime.now(tz=UTC),
         )

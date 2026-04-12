@@ -9,12 +9,12 @@ Kume follows **Hexagonal Architecture (Ports & Adapters)** with [LangChain](http
 ```
 src/kume/
 ├── domain/          # Pure Python — entities, value objects, tool logic
-├── ports/           # Abstract interfaces (MessagingPort)
-├── services/        # OrchestratorService — agentic tool-use loop
+├── ports/           # Abstract interfaces (LLMPort, repositories, MessagingPort)
+├── services/        # OrchestratorService (agentic loop) + IngestionService (media router)
 ├── adapters/        # Concrete implementations
-│   ├── input/       # TelegramBotAdapter
-│   ├── output/      # TelegramMessagingAdapter
-│   └── tools/       # LangChain BaseTool wrappers
+│   ├── input/       # TelegramBotAdapter (text + media handlers, status messages)
+│   ├── output/      # LangChainLLMAdapter, PostgreSQL repos, Whisper STT, PDF/Audio/Image processors
+│   └── tools/       # LangChain BaseTool wrappers (save, recommend, analyze)
 └── infrastructure/  # Config, DI container, metrics, logging
 ```
 
@@ -22,11 +22,24 @@ The orchestrator uses an **agentic tool-use loop**: the LLM decides which tool t
 
 ## Features
 
+### Phase 1 — Telegram Bot + Basic Responses
 - Nutrition recommendations and diet advice
 - Food analysis and nutritional assessment
 - Per-request metrics: token usage, cost (USD), and latency tracking
-- Structured JSON logging with request correlation
+- Structured JSON logging + pretty dev formatter
 - Dual-model setup: orchestrator model (e.g., gpt-4o) + cheaper tool model (e.g., gpt-4o-mini)
+- Telegram HTML formatting with code block protection
+
+### Phase 2 — Context Ingestion + Embeddings
+- **Multimodal ingestion**: PDF text extraction (PyMuPDF), audio transcription (OpenAI Whisper)
+- **PostgreSQL + pgvector**: Structured data (users, goals, restrictions, documents, lab markers) + vector embeddings
+- **Repository pattern**: Focused repository ABCs (UserRepository, GoalRepository, etc.) with PostgreSQL adapters
+- **LLMPort abstraction**: LLM as a proper port, not a framework dependency
+- **Save tools**: SaveGoalTool, SaveRestrictionTool, SaveLabReportTool (LLM-powered marker extraction), SaveHealthContextTool
+- **RAG context building**: ContextBuilder assembles user profile, goals, restrictions, documents, lab markers in prescribed order
+- **Resource processors**: ResourceProcessorPort with PDF, Audio, and Image (stub) adapters routed by IngestionService
+- **Localized status messages**: Real-time feedback during media processing (en/es)
+- **Schema migrations**: Alembic with initial schema (users, goals, restrictions, documents, lab_markers)
 
 ## Getting Started
 
@@ -34,6 +47,7 @@ The orchestrator uses an **agentic tool-use loop**: the LLM decides which tool t
 
 - Python 3.11+
 - [UV](https://docs.astral.sh/uv/) package manager
+- [Docker](https://www.docker.com/) (for PostgreSQL + pgvector)
 - A Telegram bot token ([BotFather](https://t.me/botfather))
 - An OpenAI API key
 
@@ -53,20 +67,36 @@ Copy the environment template and fill in your credentials:
 cp .env.example .env
 ```
 
-Edit `.env` with your actual values:
-
+Required variables:
 ```
 TELEGRAM_TOKEN=your-telegram-bot-token
 OPENAI_API_KEY=your-openai-api-key
 ```
 
+Optional (with defaults):
+```
+ORCHESTRATOR_MODEL=gpt-4o
+TOOL_MODEL=gpt-4o-mini
+DATABASE_URL=postgresql+asyncpg://kume:kume@localhost:5432/kume
+MAX_AGENT_ITERATIONS=5
+LOG_FORMAT=pretty
+LOG_LEVEL=INFO
+```
+
 ### Run
 
 ```bash
+# Start PostgreSQL with pgvector
+docker compose up -d
+
+# Run database migrations
+uv run alembic upgrade head
+
+# Start the bot
 uv run python -m kume
 ```
 
-The bot starts polling for Telegram messages. Send it a message like "What should I eat for breakfast?" and it will respond with personalized nutrition advice.
+Send the bot a message like "What should I eat for breakfast?" for nutrition advice, or send a PDF lab report to have it parsed and stored for future reference.
 
 ## Development
 
@@ -76,7 +106,7 @@ The bot starts polling for Telegram messages. Send it a message like "What shoul
 uv run pytest tests/ -v
 ```
 
-### Lint
+### Lint and format
 
 ```bash
 uv run ruff check src/ tests/
@@ -89,10 +119,20 @@ uv run ruff format --check src/ tests/
 uv run mypy src/
 ```
 
+### Database migrations
+
+```bash
+# Create a new migration
+alembic revision --autogenerate -m "description"
+
+# Apply migrations
+uv run alembic upgrade head
+```
+
 ## Roadmap
 
-- **Phase 1** — Telegram bot + basic responses (current)
-- **Phase 2** — Context ingestion + embeddings (RAG)
+- **Phase 1** — Telegram bot + basic responses (complete)
+- **Phase 2** — Context ingestion + embeddings (current)
 - **Phase 3** — Food image analysis
 - **Phase 4** — Meal logging
 - **Phase 5** — Reporting (CSV/XLSX export)

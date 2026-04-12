@@ -17,4 +17,4 @@ class IngestionService:
         processor = self._processors.get(mime_type)
         if not processor:
             raise UnsupportedMediaType(mime_type)
-        return await processor.process(raw_bytes)
+        return await processor.process(raw_bytes, mime_type=mime_type)

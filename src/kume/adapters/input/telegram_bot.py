@@ -11,6 +11,8 @@ from kume.services.orchestrator import OrchestratorService
 logger = logging.getLogger("kume.telegram")
 
 MAX_MESSAGE_LENGTH = 4096
+MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB — Telegram's own download limit
+MAX_EXTRACTED_TEXT = 8000
 
 
 class TelegramBotAdapter:
@@ -93,10 +95,21 @@ class TelegramBotAdapter:
 
         try:
             tg_file = await context.bot.get_file(file_id)
+            if tg_file.file_size and tg_file.file_size > MAX_FILE_SIZE:
+                await self._messaging.send_message(chat_id, "The file is too large. Please send files under 20 MB.")
+                return
             raw_bytes = bytes(await tg_file.download_as_bytearray())
             extracted_text = await self._ingestion.process(raw_bytes, mime_type)
+            if len(extracted_text) > MAX_EXTRACTED_TEXT:
+                extracted_text = extracted_text[:MAX_EXTRACTED_TEXT] + "\n\n[Text truncated — original was longer]"
         except UnsupportedMediaType:
             await self._messaging.send_message(chat_id, get_status_message("unsupported_media", lang))
+            return
+        except Exception:
+            logger.exception("Error processing media for telegram_id=%d", telegram_id)
+            await self._messaging.send_message(
+                chat_id, "Sorry, something went wrong while processing your file. Please try again."
+            )
             return
 
         caption = update.message.caption or ""
@@ -107,5 +120,9 @@ class TelegramBotAdapter:
             get_status_message("ingestion_complete", lang, details=extracted_text[:100]),
         )
 
-        response = await self._orchestrator.process(telegram_id, combined)
-        await self._messaging.send_message(chat_id, response)
+        try:
+            response = await self._orchestrator.process(telegram_id, combined)
+            await self._messaging.send_message(chat_id, response)
+        except Exception:
+            logger.exception("Error in orchestrator for media message, telegram_id=%d", telegram_id)
+            await self._messaging.send_message(chat_id, "Sorry, something went wrong. Please try again.")

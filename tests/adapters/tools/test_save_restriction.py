@@ -2,13 +2,16 @@ import pytest
 
 from kume.adapters.tools.save_restriction import SaveRestrictionTool
 from kume.domain.entities import Restriction
+from kume.infrastructure.request_context import RequestContext, _current, set_context
 from tests.adapters.tools.conftest import FakeRestrictionRepository
 
 
 class TestSaveRestrictionTool:
-    def _make_tool(self) -> SaveRestrictionTool:
+    def _make_tool(self, user_id: str = "u1") -> SaveRestrictionTool:
         repo = FakeRestrictionRepository()
-        return SaveRestrictionTool(restriction_repo=repo)
+        tool = SaveRestrictionTool(restriction_repo=repo)
+        set_context(RequestContext(user_id=user_id, telegram_id=1, language="en"))
+        return tool
 
     def test_name_and_description(self) -> None:
         tool = self._make_tool()
@@ -19,9 +22,9 @@ class TestSaveRestrictionTool:
     async def test_delegates_to_domain_handler(self) -> None:
         repo = FakeRestrictionRepository()
         tool = SaveRestrictionTool(restriction_repo=repo)
+        set_context(RequestContext(user_id="u1", telegram_id=1, language="en"))
         result = await tool.ainvoke(
             {
-                "user_id": "u1",
                 "type": "allergy",
                 "description": "Shellfish allergy",
             }
@@ -34,9 +37,9 @@ class TestSaveRestrictionTool:
     async def test_creates_restriction_with_correct_fields(self) -> None:
         repo = FakeRestrictionRepository()
         tool = SaveRestrictionTool(restriction_repo=repo)
+        set_context(RequestContext(user_id="u2", telegram_id=1, language="en"))
         await tool.ainvoke(
             {
-                "user_id": "u2",
                 "type": "diet",
                 "description": "Keto diet",
             }
@@ -46,3 +49,17 @@ class TestSaveRestrictionTool:
         assert restriction.user_id == "u2"
         assert restriction.type == "diet"
         assert restriction.description == "Keto diet"
+
+    @pytest.mark.asyncio
+    async def test_errors_when_user_id_not_set(self) -> None:
+        repo = FakeRestrictionRepository()
+        tool = SaveRestrictionTool(restriction_repo=repo)
+        _current.set(None)
+        result = await tool.ainvoke({"type": "allergy", "description": "Peanuts"})
+        assert "Error" in result
+        assert len(repo.saved_restrictions) == 0
+
+    def test_user_id_not_in_args_schema(self) -> None:
+        tool = self._make_tool()
+        schema_fields = tool.args_schema.model_fields
+        assert "user_id" not in schema_fields

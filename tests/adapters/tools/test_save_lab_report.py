@@ -3,6 +3,7 @@ import json
 import pytest
 
 from kume.adapters.tools.save_lab_report import SaveLabReportTool
+from kume.infrastructure.request_context import RequestContext, _current, set_context
 from tests.adapters.tools.conftest import (
     FakeDocumentRepository,
     FakeEmbeddingRepository,
@@ -12,13 +13,14 @@ from tests.adapters.tools.conftest import (
 
 
 class TestSaveLabReportTool:
-    def _make_tool(self, llm_response: str = "[]") -> SaveLabReportTool:
+    def _make_tool(self, llm_response: str = "[]", user_id: str = "u1") -> SaveLabReportTool:
         llm = FakeLLMPort(response_text=llm_response)
         doc_repo = FakeDocumentRepository()
         marker_repo = FakeLabMarkerRepository()
         embedding_repo = FakeEmbeddingRepository()
 
         tool = SaveLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
+        set_context(RequestContext(user_id=user_id, telegram_id=1, language="en"))
         return tool
 
     def test_name_and_description(self) -> None:
@@ -45,7 +47,8 @@ class TestSaveLabReportTool:
         embedding_repo = FakeEmbeddingRepository()
 
         tool = SaveLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
-        result = await tool.ainvoke({"user_id": "u1", "text": "Glucose: 90 mg/dL"})
+        set_context(RequestContext(user_id="u1", telegram_id=1, language="en"))
+        result = await tool.ainvoke({"text": "Glucose: 90 mg/dL"})
 
         assert "1 markers" in result or "1 marker" in result
         assert "GLUCOSA" in result
@@ -61,8 +64,27 @@ class TestSaveLabReportTool:
         embedding_repo = FakeEmbeddingRepository()
 
         tool = SaveLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
-        result = await tool.ainvoke({"user_id": "u1", "text": "Some text"})
+        set_context(RequestContext(user_id="u1", telegram_id=1, language="en"))
+        result = await tool.ainvoke({"text": "Some text"})
 
         assert "no markers" in result.lower()
         assert len(doc_repo.saved_docs) == 1
         assert len(marker_repo.saved_markers) == 0
+
+    @pytest.mark.asyncio
+    async def test_errors_when_user_id_not_set(self) -> None:
+        llm = FakeLLMPort(response_text="[]")
+        doc_repo = FakeDocumentRepository()
+        marker_repo = FakeLabMarkerRepository()
+        embedding_repo = FakeEmbeddingRepository()
+
+        tool = SaveLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
+        _current.set(None)
+        result = await tool.ainvoke({"text": "Some text"})
+        assert "Error" in result
+        assert len(doc_repo.saved_docs) == 0
+
+    def test_user_id_not_in_args_schema(self) -> None:
+        tool = self._make_tool()
+        schema_fields = tool.args_schema.model_fields
+        assert "user_id" not in schema_fields
