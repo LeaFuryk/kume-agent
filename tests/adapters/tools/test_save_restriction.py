@@ -2,7 +2,7 @@ import pytest
 
 from kume.adapters.tools.save_restriction import SaveRestrictionTool
 from kume.domain.entities import Restriction
-from kume.infrastructure.request_context import current_user_id
+from kume.infrastructure.request_context import RequestContext, _current, set_context
 from tests.adapters.tools.conftest import FakeRestrictionRepository
 
 
@@ -10,7 +10,7 @@ class TestSaveRestrictionTool:
     def _make_tool(self, user_id: str = "u1") -> SaveRestrictionTool:
         repo = FakeRestrictionRepository()
         tool = SaveRestrictionTool(restriction_repo=repo)
-        current_user_id.set(user_id)
+        set_context(RequestContext(user_id=user_id, telegram_id=1, language="en"))
         return tool
 
     def test_name_and_description(self) -> None:
@@ -22,7 +22,7 @@ class TestSaveRestrictionTool:
     async def test_delegates_to_domain_handler(self) -> None:
         repo = FakeRestrictionRepository()
         tool = SaveRestrictionTool(restriction_repo=repo)
-        current_user_id.set("u1")
+        set_context(RequestContext(user_id="u1", telegram_id=1, language="en"))
         result = await tool.ainvoke(
             {
                 "type": "allergy",
@@ -37,7 +37,7 @@ class TestSaveRestrictionTool:
     async def test_creates_restriction_with_correct_fields(self) -> None:
         repo = FakeRestrictionRepository()
         tool = SaveRestrictionTool(restriction_repo=repo)
-        current_user_id.set("u2")
+        set_context(RequestContext(user_id="u2", telegram_id=1, language="en"))
         await tool.ainvoke(
             {
                 "type": "diet",
@@ -54,7 +54,7 @@ class TestSaveRestrictionTool:
     async def test_errors_when_user_id_not_set(self) -> None:
         repo = FakeRestrictionRepository()
         tool = SaveRestrictionTool(restriction_repo=repo)
-        current_user_id.set(None)
+        _current.set(None)
         result = await tool.ainvoke({"type": "allergy", "description": "Peanuts"})
         assert "Error" in result
         assert len(repo.saved_restrictions) == 0

@@ -8,7 +8,7 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, ConfigDict, Field
 
 from kume.domain.entities import Document
-from kume.infrastructure.request_context import current_user_id
+from kume.infrastructure.request_context import get_context
 from kume.ports.output.repositories import DocumentRepository, EmbeddingRepository
 
 
@@ -46,13 +46,13 @@ class SaveHealthContextTool(BaseTool):
 
     async def _arun(self, text: str) -> str:
         """Primary async entry point — called by LangChain's agent via .ainvoke()."""
-        user_id = current_user_id.get()
-        if not user_id:
+        ctx = get_context()
+        if not ctx:
             return "Error: user_id not set. Cannot save health context."
         doc_id = str(uuid4())
         doc = Document(
             id=doc_id,
-            user_id=user_id,
+            user_id=ctx.user_id,
             type="health_context",
             filename="health_context.txt",
             summary=text[:200],
@@ -61,6 +61,6 @@ class SaveHealthContextTool(BaseTool):
         await self.doc_repo.save(doc)
 
         chunks = [text[i : i + 1000] for i in range(0, len(text), 1000)]
-        await self.embedding_repo.embed_chunks(user_id, doc_id, chunks)
+        await self.embedding_repo.embed_chunks(ctx.user_id, doc_id, chunks)
 
         return f"Health context saved and indexed ({len(chunks)} chunks)"

@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from kume.domain.context import ContextBuilder
 from kume.domain.tools import analyze_food as domain_analyze_food
-from kume.infrastructure.request_context import current_user_id
+from kume.infrastructure.request_context import get_context
 from kume.ports.output.llm import LLMPort
 
 logger = logging.getLogger(__name__)
@@ -60,23 +60,25 @@ class AnalyzeFoodTool(BaseTool):
         return await self.llm.complete("", prompt)
 
     def _build_context_sync(self, query: str) -> str:
-        if self.context_builder is None or current_user_id.get() is None:
+        ctx = get_context()
+        if self.context_builder is None or ctx is None:
             return ""
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 logger.warning("Cannot build context synchronously inside a running event loop.")
                 return ""
-            return loop.run_until_complete(self.context_builder.build(current_user_id.get(), query))
+            return loop.run_until_complete(self.context_builder.build(ctx.user_id, query))
         except RuntimeError:
             logger.warning("Failed to build context synchronously", exc_info=True)
             return ""
 
     async def _build_context(self, query: str) -> str:
-        if self.context_builder is None or current_user_id.get() is None:
+        ctx = get_context()
+        if self.context_builder is None or ctx is None:
             return ""
         try:
-            return await self.context_builder.build(current_user_id.get(), query)
+            return await self.context_builder.build(ctx.user_id, query)
         except Exception:
             logger.warning("Failed to build context", exc_info=True)
             return ""

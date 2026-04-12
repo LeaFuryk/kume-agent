@@ -1,7 +1,7 @@
 import pytest
 
 from kume.adapters.tools.save_health_context import SaveHealthContextTool
-from kume.infrastructure.request_context import current_user_id
+from kume.infrastructure.request_context import RequestContext, _current, set_context
 from tests.adapters.tools.conftest import FakeDocumentRepository, FakeEmbeddingRepository
 
 
@@ -20,7 +20,7 @@ class TestSaveHealthContextTool:
         embedding_repo = FakeEmbeddingRepository()
 
         tool = SaveHealthContextTool(doc_repo=doc_repo, embedding_repo=embedding_repo)
-        current_user_id.set("u1")
+        set_context(RequestContext(user_id="u1", telegram_id=1, language="en"))
         result = await tool.ainvoke(
             {
                 "text": "Patient has type 2 diabetes.",
@@ -38,7 +38,7 @@ class TestSaveHealthContextTool:
         embedding_repo = FakeEmbeddingRepository()
 
         tool = SaveHealthContextTool(doc_repo=doc_repo, embedding_repo=embedding_repo)
-        current_user_id.set("u1")
+        set_context(RequestContext(user_id="u1", telegram_id=1, language="en"))
         long_text = "Z" * 2500
         result = await tool.ainvoke({"text": long_text})
 
@@ -51,7 +51,7 @@ class TestSaveHealthContextTool:
         embedding_repo = FakeEmbeddingRepository()
 
         tool = SaveHealthContextTool(doc_repo=doc_repo, embedding_repo=embedding_repo)
-        current_user_id.set(None)
+        _current.set(None)
         result = await tool.ainvoke({"text": "Some health info"})
         assert "Error" in result
         assert len(doc_repo.saved_docs) == 0

@@ -9,7 +9,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
 
 from kume.infrastructure.metrics import MetricsCallbackHandler, MetricsCollector
-from kume.infrastructure.request_context import current_user_id
+from kume.infrastructure.request_context import RequestContext, set_context
 from kume.ports.output.repositories import UserRepository
 
 SYSTEM_PROMPT = """You are Kume, a personal AI nutrition assistant. You help users with:
@@ -76,7 +76,7 @@ class OrchestratorService:
         if self._user_repo is not None:
             try:
                 user = await self._user_repo.get_or_create(telegram_id)
-                current_user_id.set(user.id)
+                set_context(RequestContext(user_id=user.id, telegram_id=telegram_id, language="en"))
             except Exception:
                 logger.warning("Failed to resolve user_id for telegram_id=%d", telegram_id, exc_info=True)
 

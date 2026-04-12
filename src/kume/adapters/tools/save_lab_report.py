@@ -6,7 +6,7 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, ConfigDict, Field
 
 from kume.domain.tools.save_lab_report import LabReportProcessor
-from kume.infrastructure.request_context import current_user_id
+from kume.infrastructure.request_context import get_context
 from kume.ports.output.llm import LLMPort
 from kume.ports.output.repositories import DocumentRepository, EmbeddingRepository, LabMarkerRepository
 
@@ -46,8 +46,8 @@ class SaveLabReportTool(BaseTool):
 
     async def _arun(self, text: str) -> str:
         """Primary async entry point — called by LangChain's agent via .ainvoke()."""
-        user_id = current_user_id.get()
-        if not user_id:
+        ctx = get_context()
+        if not ctx:
             return "Error: user_id not set. Cannot save lab report."
         processor = LabReportProcessor(
             doc_repo=self.doc_repo,
@@ -55,4 +55,4 @@ class SaveLabReportTool(BaseTool):
             embedder=self.embedding_repo,
             llm=self.llm,
         )
-        return await processor.process(user_id=user_id, text=text)
+        return await processor.process(user_id=ctx.user_id, text=text)
