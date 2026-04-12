@@ -27,7 +27,10 @@ _MARKERS_SCHEMA: dict = {
                     "name": {"type": "string", "description": "Marker name, e.g. COLESTEROL TOTAL"},
                     "value": {"type": "number", "description": "Numeric result value"},
                     "unit": {"type": "string", "description": "Unit of measurement, e.g. mg/dL"},
-                    "reference_range": {"type": "string", "description": "Reference range, e.g. < 200 mg/dL"},
+                    "reference_range": {
+                        "type": ["string", "null"],
+                        "description": "Reference range, e.g. < 200 mg/dL, or null if not available",
+                    },
                     "date": {"type": ["string", "null"], "description": "Test date in YYYY-MM-DD format, or null"},
                 },
                 "required": ["name", "value", "unit", "reference_range", "date"],
@@ -271,7 +274,7 @@ def _parse_markers(raw_response: str, doc_id: str, user_id: str) -> list[LabMark
                         name=item["name"],
                         value=float(item["value"]),
                         unit=item["unit"],
-                        reference_range=item.get("reference_range", ""),
+                        reference_range=item.get("reference_range") or "",
                         date=marker_date,
                     )
                 )
