@@ -8,16 +8,16 @@ from uuid import uuid4
 from kume.domain.entities import Document, LabMarker
 
 _EXTRACTION_PROMPT = """\
-You are a medical lab report parser. Extract all lab markers from the following text.
+Extract ALL lab markers from the following lab report text.
 
-Return a JSON array of objects, each with these fields:
-- "name": the marker name (e.g. "COLESTEROL TOTAL")
-- "value": the numeric value as a float
-- "unit": the unit of measurement (e.g. "mg/dL")
-- "reference_range": the reference range as a string (e.g. "< 200 mg/dL")
-- "date": the date of the test in ISO 8601 format (YYYY-MM-DD), or null if unknown
+Return a JSON array. Each object must have exactly these fields:
+{{"name": "MARKER NAME", "value": 123.4, "unit": "mg/dL", "reference_range": "< 200 mg/dL", "date": "YYYY-MM-DD"}}
 
-Return ONLY the JSON array, no other text.
+Rules:
+- "value" must be a number (float), not a string
+- "date" is the test date in ISO 8601 format, or null if not found
+- Include EVERY marker found in the text, even if the reference range is unclear
+- Return ONLY the JSON array — no markdown, no commentary, no code blocks
 
 Lab report text:
 {text}
@@ -167,11 +167,27 @@ class LabReportProcessor:
         )
 
 
+def _extract_json(text: str) -> str:
+    """Extract JSON from LLM response that may be wrapped in markdown code blocks."""
+    import re
+
+    # Try to find JSON in ```json ... ``` or ``` ... ``` blocks
+    match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    # Try to find a JSON array directly
+    match = re.search(r"\[.*\]", text, re.DOTALL)
+    if match:
+        return match.group(0)
+    return text
+
+
 def _parse_markers(raw_response: str, doc_id: str, user_id: str) -> list[LabMarker]:
     """Parse LLM JSON response into LabMarker entities. Returns empty list on failure."""
     markers: list[LabMarker] = []
+    cleaned = _extract_json(raw_response)
     try:
-        parsed = json.loads(raw_response)
+        parsed = json.loads(cleaned)
     except (json.JSONDecodeError, ValueError):
         return markers
 
