@@ -13,14 +13,16 @@ from kume.adapters.output.postgres_models import (
     DocumentModel,
     GoalModel,
     LabMarkerModel,
+    MealModel,
     RestrictionModel,
     UserModel,
 )
-from kume.domain.entities import Document, Goal, LabMarker, Restriction, User
+from kume.domain.entities import Document, Goal, LabMarker, Meal, Restriction, User
 from kume.ports.output.repositories import (
     DocumentRepository,
     GoalRepository,
     LabMarkerRepository,
+    MealRepository,
     RestrictionRepository,
     UserRepository,
 )
@@ -175,6 +177,49 @@ class PostgresLabMarkerRepository(LabMarkerRepository):
             return [_to_lab_marker(r) for r in result.scalars().all()]
 
 
+class PostgresMealRepository(MealRepository):
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._sf = session_factory
+
+    async def save(self, meal: Meal) -> None:
+        async with self._sf() as session:
+            model = MealModel(
+                id=meal.id,
+                user_id=meal.user_id,
+                description=meal.description,
+                calories=meal.calories,
+                protein_g=meal.protein_g,
+                carbs_g=meal.carbs_g,
+                fat_g=meal.fat_g,
+                fiber_g=meal.fiber_g,
+                sodium_mg=meal.sodium_mg,
+                sugar_g=meal.sugar_g,
+                saturated_fat_g=meal.saturated_fat_g,
+                cholesterol_mg=meal.cholesterol_mg,
+                confidence=meal.confidence,
+                image_present=meal.image_present,
+                logged_at=meal.logged_at,
+            )
+            session.add(model)
+            await session.commit()
+
+    async def get_by_user(
+        self,
+        user_id: str,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> list[Meal]:
+        async with self._sf() as session:
+            stmt = select(MealModel).where(MealModel.user_id == user_id)
+            if since is not None:
+                stmt = stmt.where(MealModel.logged_at >= since)
+            stmt = stmt.order_by(MealModel.logged_at.desc())
+            if limit is not None:
+                stmt = stmt.limit(limit)
+            result = await session.execute(stmt)
+            return [_to_meal(r) for r in result.scalars().all()]
+
+
 # --- Model-to-entity mappers ---
 
 
@@ -209,4 +254,24 @@ def _to_lab_marker(m: LabMarkerModel) -> LabMarker:
         unit=m.unit,
         reference_range=m.reference_range,
         date=m.date,
+    )
+
+
+def _to_meal(m: MealModel) -> Meal:
+    return Meal(
+        id=m.id,
+        user_id=m.user_id,
+        description=m.description,
+        calories=m.calories,
+        protein_g=m.protein_g,
+        carbs_g=m.carbs_g,
+        fat_g=m.fat_g,
+        fiber_g=m.fiber_g,
+        sodium_mg=m.sodium_mg,
+        sugar_g=m.sugar_g,
+        saturated_fat_g=m.saturated_fat_g,
+        cholesterol_mg=m.cholesterol_mg,
+        confidence=m.confidence,
+        image_present=m.image_present,
+        logged_at=m.logged_at,
     )
