@@ -16,6 +16,9 @@ def settings() -> Settings:
         tool_model="gpt-4o-mini",
         max_agent_iterations=5,
         log_level="INFO",
+        database_url="postgresql+asyncpg://kume:kume@localhost:5432/kume",
+        openai_embedding_model="text-embedding-3-small",
+        log_format="pretty",
     )
 
 

@@ -12,8 +12,11 @@ def test_database_port_cannot_be_instantiated() -> None:
 
 
 class _FakeDatabase(DatabasePort):
-    async def get_or_create_user(self, telegram_id: int) -> User:
-        return User(id="u1", telegram_id=telegram_id)
+    async def get_or_create_user(self, telegram_id: int, name: str | None = None, language: str = "en") -> User:
+        return User(id="u1", telegram_id=telegram_id, name=name, language=language)
+
+    async def update_user(self, user: User) -> None:
+        self.updated_user = user
 
     async def save_document(self, doc: Document) -> None:
         self.saved_doc = doc
@@ -32,13 +35,13 @@ class _FakeDatabase(DatabasePort):
     async def save_goal(self, goal: Goal) -> None:
         self.saved_goal = goal
 
-    async def get_goals(self, user_id: str) -> list[Goal]:
+    async def get_goals(self, user_id: str, active_only: bool = True) -> list[Goal]:
         return []
 
     async def save_restriction(self, restriction: Restriction) -> None:
         self.saved_restriction = restriction
 
-    async def get_restrictions(self, user_id: str) -> list[Restriction]:
+    async def get_restrictions(self, user_id: str, active_only: bool = True) -> list[Restriction]:
         return []
 
 

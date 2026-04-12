@@ -5,12 +5,15 @@ description = "A multimodal AI agent for personal nutrition guidance via Telegra
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "alembic>=1.14",
+    "asyncpg>=0.30",
     "langchain>=0.3",
     "langchain-community>=0.3",
     "langchain-core>=0.3",
     "langchain-openai>=0.3",
     "python-dotenv>=1.0",
     "python-telegram-bot>=21.0",
+    "sqlalchemy[asyncio]>=2.0",
 ]
 
 [project.optional-dependencies]

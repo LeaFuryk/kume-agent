@@ -10,6 +10,9 @@ class User:
 
     id: str
     telegram_id: int
+    name: str | None = None
+    language: str = "en"
+    timezone: str = "UTC"
 
 
 @dataclass(frozen=True)
@@ -20,6 +23,7 @@ class Goal:
     user_id: str
     description: str
     created_at: datetime
+    completed_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -31,6 +35,7 @@ class Restriction:
     type: str  # "allergy", "intolerance", "diet"
     description: str
     created_at: datetime
+    completed_at: datetime | None = None
 
 
 @dataclass(frozen=True)
