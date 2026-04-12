@@ -188,9 +188,7 @@ async def test_handle_media_pdf_document(
     )
     messaging.send_message.assert_has_awaits(
         [
-            call(67890, get_status_message("processing_media", "en")),
-            call(67890, get_status_message("extracting_pdf", "en")),
-            call(67890, get_status_message("ingestion_complete", "en", details="Extracted: cholesterol 200mg/dL")),
+            call(67890, get_status_message("reading_analysis", "en")),
             call(67890, "Your cholesterol is within range."),
         ]
     )
@@ -220,9 +218,7 @@ async def test_handle_media_voice_message(
     orchestrator.process.assert_awaited_once_with(12345, "I ate a salad for lunch")
     messaging.send_message.assert_has_awaits(
         [
-            call(67890, get_status_message("processing_media", "en")),
             call(67890, get_status_message("transcribing_audio", "en")),
-            call(67890, get_status_message("ingestion_complete", "en", details="I ate a salad for lunch")),
             call(67890, "Great choice!"),
         ]
     )
@@ -280,11 +276,10 @@ async def test_handle_media_photo(
         12345,
         "What is this?\n\nA plate of grilled chicken with rice",
     )
-    # Photos (image/jpeg) get processing_media but no type-specific status
+    # Photos (image/jpeg) get processing_media — no "Done!" message
     messaging.send_message.assert_has_awaits(
         [
             call(67890, get_status_message("processing_media", "en")),
-            call(67890, get_status_message("ingestion_complete", "en", details="A plate of grilled chicken with rice")),
             call(67890, "That looks like a balanced meal."),
         ]
     )
@@ -327,5 +322,5 @@ async def test_handle_media_rejects_oversized_file(
 
     ingestion.process.assert_not_awaited()
     orchestrator.process.assert_not_awaited()
-    # Should have sent processing_media + extracting_pdf + rejection message
+    # Should have sent reading_analysis + rejection message
     assert any("too large" in str(c) for c in messaging.send_message.call_args_list)

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from telegram import Update
@@ -25,6 +26,13 @@ class TelegramBotAdapter:
         self._orchestrator = orchestrator
         self._messaging = messaging
         self._ingestion = ingestion
+        self._user_locks: dict[int, asyncio.Lock] = {}
+
+    def _get_lock(self, telegram_id: int) -> asyncio.Lock:
+        """Get or create a per-user lock. Messages from the same user are processed sequentially."""
+        if telegram_id not in self._user_locks:
+            self._user_locks[telegram_id] = asyncio.Lock()
+        return self._user_locks[telegram_id]
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not update.message or not update.message.text:
@@ -37,6 +45,7 @@ class TelegramBotAdapter:
 
         telegram_id = update.effective_user.id if update.effective_user else 0
         chat_id = update.effective_chat.id if update.effective_chat else 0
+        lang = update.effective_user.language_code if update.effective_user else None
         text = update.message.text
 
         if len(text) > MAX_MESSAGE_LENGTH:
@@ -45,10 +54,14 @@ class TelegramBotAdapter:
             )
             return
 
-        logger.info("Received message from telegram_id=%d", telegram_id)
+        lock = self._get_lock(telegram_id)
+        if lock.locked():
+            await self._messaging.send_message(chat_id, get_status_message("busy", lang))
 
-        response = await self._orchestrator.process(telegram_id, text)
-        await self._messaging.send_message(chat_id, response)
+        async with lock:
+            logger.info("Received message from telegram_id=%d", telegram_id)
+            response = await self._orchestrator.process(telegram_id, text)
+            await self._messaging.send_message(chat_id, response)
 
     async def handle_media(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         chat_id = update.effective_chat.id if update.effective_chat else 0
@@ -71,7 +84,6 @@ class TelegramBotAdapter:
             file_id = update.message.audio.file_id
             mime_type = update.message.audio.mime_type
         elif update.message.photo:
-            # photo is a list of PhotoSize; take the largest (last)
             photo = update.message.photo[-1]
             file_id = photo.file_id
             mime_type = "image/jpeg"
@@ -84,45 +96,47 @@ class TelegramBotAdapter:
             await self._messaging.send_message(chat_id, "Media processing is not available.")
             return
 
-        logger.info("Received media (mime=%s) from telegram_id=%d", mime_type, telegram_id)
+        lock = self._get_lock(telegram_id)
+        if lock.locked():
+            await self._messaging.send_message(chat_id, get_status_message("busy", lang))
 
-        await self._messaging.send_message(chat_id, get_status_message("processing_media", lang))
+        async with lock:
+            logger.info("Received media (mime=%s) from telegram_id=%d", mime_type, telegram_id)
 
-        if mime_type == "application/pdf":
-            await self._messaging.send_message(chat_id, get_status_message("extracting_pdf", lang))
-        elif mime_type and mime_type.startswith("audio/"):
-            await self._messaging.send_message(chat_id, get_status_message("transcribing_audio", lang))
+            # Single human-friendly status message — stays visible until orchestrator responds
+            if mime_type == "application/pdf":
+                await self._messaging.send_message(chat_id, get_status_message("reading_analysis", lang))
+            elif mime_type and mime_type.startswith("audio/"):
+                await self._messaging.send_message(chat_id, get_status_message("transcribing_audio", lang))
+            else:
+                await self._messaging.send_message(chat_id, get_status_message("processing_media", lang))
 
-        try:
-            tg_file = await context.bot.get_file(file_id)
-            if tg_file.file_size and tg_file.file_size > MAX_FILE_SIZE:
-                await self._messaging.send_message(chat_id, "The file is too large. Please send files under 20 MB.")
+            try:
+                tg_file = await context.bot.get_file(file_id)
+                if tg_file.file_size and tg_file.file_size > MAX_FILE_SIZE:
+                    await self._messaging.send_message(chat_id, "The file is too large. Please send files under 20 MB.")
+                    return
+                raw_bytes = bytes(await tg_file.download_as_bytearray())
+                extracted_text = await self._ingestion.process(raw_bytes, mime_type)
+                if len(extracted_text) > MAX_EXTRACTED_TEXT:
+                    extracted_text = extracted_text[:MAX_EXTRACTED_TEXT] + "\n\n[Text truncated — original was longer]"
+            except UnsupportedMediaType:
+                await self._messaging.send_message(chat_id, get_status_message("unsupported_media", lang))
                 return
-            raw_bytes = bytes(await tg_file.download_as_bytearray())
-            extracted_text = await self._ingestion.process(raw_bytes, mime_type)
-            if len(extracted_text) > MAX_EXTRACTED_TEXT:
-                extracted_text = extracted_text[:MAX_EXTRACTED_TEXT] + "\n\n[Text truncated — original was longer]"
-        except UnsupportedMediaType:
-            await self._messaging.send_message(chat_id, get_status_message("unsupported_media", lang))
-            return
-        except Exception:
-            logger.exception("Error processing media for telegram_id=%d", telegram_id)
-            await self._messaging.send_message(
-                chat_id, "Sorry, something went wrong while processing your file. Please try again."
-            )
-            return
+            except Exception:
+                logger.exception("Error processing media for telegram_id=%d", telegram_id)
+                await self._messaging.send_message(
+                    chat_id, "Sorry, something went wrong while processing your file. Please try again."
+                )
+                return
 
-        caption = update.message.caption or ""
-        combined = f"{caption}\n\n{extracted_text}".strip() if caption else extracted_text
+            caption = update.message.caption or ""
+            combined = f"{caption}\n\n{extracted_text}".strip() if caption else extracted_text
 
-        await self._messaging.send_message(
-            chat_id,
-            get_status_message("ingestion_complete", lang, details=extracted_text[:100]),
-        )
-
-        try:
-            response = await self._orchestrator.process(telegram_id, combined)
-            await self._messaging.send_message(chat_id, response)
-        except Exception:
-            logger.exception("Error in orchestrator for media message, telegram_id=%d", telegram_id)
-            await self._messaging.send_message(chat_id, "Sorry, something went wrong. Please try again.")
+            # No "Done!" message — orchestrator's response IS the confirmation
+            try:
+                response = await self._orchestrator.process(telegram_id, combined)
+                await self._messaging.send_message(chat_id, response)
+            except Exception:
+                logger.exception("Error in orchestrator for media message, telegram_id=%d", telegram_id)
+                await self._messaging.send_message(chat_id, "Sorry, something went wrong. Please try again.")
