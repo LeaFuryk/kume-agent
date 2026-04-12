@@ -1,0 +1,110 @@
+from __future__ import annotations
+
+import asyncio
+import logging
+from collections.abc import Callable, Coroutine
+from dataclasses import dataclass
+from typing import Any
+
+logger = logging.getLogger("kume.batcher")
+
+
+@dataclass
+class MediaItem:
+    """A downloaded media file waiting to be processed in a batch."""
+
+    raw_bytes: bytes
+    mime_type: str
+    caption: str
+
+
+class PendingBatch:
+    """Accumulates messages for one user within the debounce window."""
+
+    def __init__(self) -> None:
+        self.texts: list[str] = []
+        self.media: list[MediaItem] = []
+        self.chat_id: int = 0
+        self.language: str | None = None
+
+
+class MessageBatcher:
+    """Per-user debounce queue.
+
+    Collects text and media messages within a silence window, then fires
+    the ``on_batch_ready`` callback with the accumulated batch.
+    """
+
+    def __init__(
+        self,
+        debounce_seconds: float,
+        on_batch_ready: Callable[[int, PendingBatch], Coroutine[Any, Any, None]],
+    ) -> None:
+        self._debounce = debounce_seconds
+        self._on_batch_ready = on_batch_ready
+        self._batches: dict[int, PendingBatch] = {}
+        self._timers: dict[int, asyncio.TimerHandle] = {}
+
+    async def add_text(
+        self,
+        telegram_id: int,
+        chat_id: int,
+        text: str,
+        language: str | None = None,
+    ) -> None:
+        """Add a text message and reset the debounce timer."""
+        batch = self._get_or_create_batch(telegram_id, chat_id, language)
+        batch.texts.append(text)
+        self._reset_timer(telegram_id)
+
+    async def add_media(
+        self,
+        telegram_id: int,
+        chat_id: int,
+        item: MediaItem,
+        language: str | None = None,
+    ) -> None:
+        """Add a downloaded media item and reset the debounce timer."""
+        batch = self._get_or_create_batch(telegram_id, chat_id, language)
+        batch.media.append(item)
+        self._reset_timer(telegram_id)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _get_or_create_batch(
+        self,
+        telegram_id: int,
+        chat_id: int,
+        language: str | None,
+    ) -> PendingBatch:
+        if telegram_id not in self._batches:
+            self._batches[telegram_id] = PendingBatch()
+        batch = self._batches[telegram_id]
+        batch.chat_id = chat_id
+        if language is not None:
+            batch.language = language
+        return batch
+
+    def _reset_timer(self, telegram_id: int) -> None:
+        if telegram_id in self._timers:
+            self._timers[telegram_id].cancel()
+        loop = asyncio.get_running_loop()
+        self._timers[telegram_id] = loop.call_later(
+            self._debounce,
+            lambda tid=telegram_id: asyncio.ensure_future(self._fire(tid)),
+        )
+
+    async def _fire(self, telegram_id: int) -> None:
+        batch = self._batches.pop(telegram_id, None)
+        self._timers.pop(telegram_id, None)
+        if batch is None:
+            return
+        try:
+            await self._on_batch_ready(telegram_id, batch)
+        except Exception:
+            logger.exception(
+                "Error in batch callback for telegram_id=%d",
+                telegram_id,
+            )

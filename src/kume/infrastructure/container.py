@@ -7,6 +7,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 from telegram.ext import Application, MessageHandler, filters
 
+from kume.adapters.input.message_batcher import MessageBatcher
 from kume.adapters.input.telegram_bot import TelegramBotAdapter
 from kume.adapters.output.audio_processor import AudioProcessor
 from kume.adapters.output.image_processor import ImageProcessor
@@ -191,11 +192,21 @@ class Container:
         app = Application.builder().token(self._settings.telegram_token).build()
         orchestrator = self.orchestrator_service()
         messaging = TelegramMessagingAdapter(bot=app.bot)
+        ingestion = self.ingestion_service()
+
+        # Create the bot adapter first (without batcher), then wire the batcher
+        # pointing back to the adapter's _process_batch method.
         bot_adapter = TelegramBotAdapter(
             orchestrator=orchestrator,
             messaging=messaging,
-            ingestion=self.ingestion_service(),
+            ingestion=ingestion,
         )
+        batcher = MessageBatcher(
+            debounce_seconds=3.0,
+            on_batch_ready=bot_adapter._process_batch,
+        )
+        bot_adapter._batcher = batcher
+
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot_adapter.handle_message))
         app.add_handler(
             MessageHandler(

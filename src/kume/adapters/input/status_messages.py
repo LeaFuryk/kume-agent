@@ -19,6 +19,10 @@ STATUS_MESSAGES = {
         "en": "⏳ I'm still working on your previous message, give me a moment...",
         "es": "⏳ Todavía estoy trabajando en tu mensaje anterior, dame un momento...",
     },
+    "processing_batch": {
+        "en": "📄 Reading your messages...",
+        "es": "📄 Leyendo tus mensajes...",
+    },
 }
 
 
