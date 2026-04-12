@@ -42,6 +42,7 @@ class TelegramBotAdapter:
         telegram_id = update.effective_user.id if update.effective_user else 0
         chat_id = update.effective_chat.id if update.effective_chat else 0
         lang = update.effective_user.language_code if update.effective_user else None
+        user_name = update.effective_user.first_name if update.effective_user else None
         text = update.message.text
 
         if len(text) > MAX_MESSAGE_LENGTH:
@@ -52,17 +53,17 @@ class TelegramBotAdapter:
 
         if self._batcher:
             logger.info("Queuing text from telegram_id=%d", telegram_id)
-            await self._batcher.add_text(telegram_id, chat_id, text, lang)
+            await self._batcher.add_text(telegram_id, chat_id, text, lang, user_name=user_name)
         else:
-            # Fallback: process immediately (no batcher configured)
             logger.info("Received message from telegram_id=%d", telegram_id)
-            response = await self._orchestrator.process(telegram_id, text)
+            response = await self._orchestrator.process(telegram_id, text, user_name=user_name)
             await self._messaging.send_message(chat_id, response)
 
     async def handle_media(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         chat_id = update.effective_chat.id if update.effective_chat else 0
         telegram_id = update.effective_user.id if update.effective_user else 0
         lang = update.effective_user.language_code if update.effective_user else None
+        user_name = update.effective_user.first_name if update.effective_user else None
 
         if not update.message:
             return
@@ -113,7 +114,7 @@ class TelegramBotAdapter:
 
         if self._batcher:
             logger.info("Queuing media (mime=%s) from telegram_id=%d", mime_type, telegram_id)
-            await self._batcher.add_media(telegram_id, chat_id, item, lang)
+            await self._batcher.add_media(telegram_id, chat_id, item, lang, user_name=user_name)
         else:
             # Fallback: process immediately (no batcher configured)
             await self._process_single_media(telegram_id, chat_id, lang, item)
@@ -199,7 +200,7 @@ class TelegramBotAdapter:
                 combined = combined[:MAX_EXTRACTED_TEXT] + "\n\n[Text truncated — original was longer]"
 
             # ONE orchestrator call -> ONE response
-            response = await self._orchestrator.process(telegram_id, combined)
+            response = await self._orchestrator.process(telegram_id, combined, user_name=batch.user_name)
             await self._messaging.send_message(chat_id, response)
 
         except UnsupportedMediaType:

@@ -150,7 +150,9 @@ async def test_handle_message_adds_text_to_batcher(
 
     await adapter.handle_message(update, context)
 
-    batcher.add_text.assert_awaited_once_with(12345, 67890, "What should I eat?", "en")
+    batcher.add_text.assert_awaited_once()
+    call_args = batcher.add_text.call_args
+    assert call_args[0][:4] == (12345, 67890, "What should I eat?", "en")
     orchestrator.process.assert_not_awaited()
 
 
@@ -316,7 +318,7 @@ async def test_process_batch_single_text(
 
     await batch_adapter._process_batch(12345, batch)
 
-    orchestrator.process.assert_awaited_once_with(12345, "[User message]\nWhat should I eat?")
+    orchestrator.process.assert_awaited_once_with(12345, "[User message]\nWhat should I eat?", user_name=None)
     # Single text: no status message, just the response
     messaging.send_message.assert_awaited_once_with(67890, "Eat more vegetables!")
 
@@ -340,7 +342,7 @@ async def test_process_batch_single_pdf(
 
     ingestion.process.assert_awaited_once_with(b"pdf-bytes", "application/pdf")
     orchestrator.process.assert_awaited_once_with(
-        12345, "[Document] (caption: My labs)\nExtracted: cholesterol 200mg/dL"
+        12345, "[Document] (caption: My labs)\nExtracted: cholesterol 200mg/dL", user_name=None
     )
     messaging.send_message.assert_has_awaits(
         [

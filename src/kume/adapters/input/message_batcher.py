@@ -26,6 +26,7 @@ class PendingBatch:
         self.media: list[MediaItem] = []
         self.chat_id: int = 0
         self.language: str | None = None
+        self.user_name: str | None = None
 
 
 class MessageBatcher:
@@ -52,10 +53,13 @@ class MessageBatcher:
         chat_id: int,
         text: str,
         language: str | None = None,
+        user_name: str | None = None,
     ) -> None:
         """Add a text message and reset the debounce timer."""
         batch = self._get_or_create_batch(telegram_id, chat_id, language)
         batch.texts.append(text)
+        if user_name:
+            batch.user_name = user_name
         self._reset_timer(telegram_id)
 
     async def add_media(
@@ -64,9 +68,12 @@ class MessageBatcher:
         chat_id: int,
         item: MediaItem,
         language: str | None = None,
+        user_name: str | None = None,
     ) -> None:
         """Add a downloaded media item and reset the debounce timer."""
         batch = self._get_or_create_batch(telegram_id, chat_id, language)
+        if user_name:
+            batch.user_name = user_name
         batch.media.append(item)
         self._reset_timer(telegram_id)
 

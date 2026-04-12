@@ -56,18 +56,31 @@ class OrchestratorService:
             system_prompt=system_prompt,
         )
 
-    async def process(self, telegram_id: int, text: str) -> str:
-        """Process a user message through the agentic loop and return the response."""
+    async def process(self, telegram_id: int, text: str, user_name: str | None = None) -> str:
+        """Process a user message through the agentic loop and return the response.
+
+        Args:
+            telegram_id: The user's Telegram ID.
+            text: The message text.
+            user_name: The user's name from Telegram profile (first_name).
+                       Saved to DB on first contact, used in every prompt.
+        """
         collector = MetricsCollector()
         collector.start_request(telegram_id)
         callback_handler = MetricsCallbackHandler(collector)
 
         # Resolve telegram_id -> user and set request context.
-        # Only prepend user name — full context is fetched on-demand via fetch_context tool.
         user_prefix = ""
         if self._user_repo is not None:
             try:
-                user = await self._user_repo.get_or_create(telegram_id)
+                user = await self._user_repo.get_or_create(telegram_id, name=user_name)
+                # Update name if Telegram profile changed and DB has no name yet
+                if user_name and not user.name:
+                    from dataclasses import replace
+
+                    updated = replace(user, name=user_name)
+                    await self._user_repo.update(updated)
+                    user = updated
                 set_context(RequestContext(user_id=user.id, telegram_id=telegram_id, language="en"))
                 if user.name:
                     user_prefix = f"[User: {user.name}]\n"
