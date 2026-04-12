@@ -1,16 +1,4 @@
-from kume.adapters.tools.stubs import IngestContextTool, LogMealTool, RequestReportTool
-
-
-class TestIngestContextTool:
-    def test_name_and_description(self) -> None:
-        tool = IngestContextTool()
-        assert tool.name == "ingest_context"
-        assert "document" in tool.description.lower() or "store" in tool.description.lower()
-
-    def test_returns_coming_soon(self) -> None:
-        tool = IngestContextTool()
-        result = tool.invoke({"query": "my lab results"})
-        assert "coming soon" in result.lower()
+from kume.adapters.tools.stubs import LogMealTool, RequestReportTool
 
 
 class TestLogMealTool:

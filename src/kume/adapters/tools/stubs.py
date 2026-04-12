@@ -1,20 +1,11 @@
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
-from kume.domain.tools import ingest_context, log_meal, request_report
+from kume.domain.tools import log_meal, request_report
 
 
 class StubInput(BaseModel):
     query: str = Field(default="", description="Optional input for the tool")
-
-
-class IngestContextTool(BaseTool):
-    name: str = "ingest_context"
-    description: str = "Process and store health documents, lab results, or diet plans for future reference"
-    args_schema: type[BaseModel] = StubInput
-
-    def _run(self, query: str = "") -> str:
-        return ingest_context(query=query)
 
 
 class LogMealTool(BaseTool):
