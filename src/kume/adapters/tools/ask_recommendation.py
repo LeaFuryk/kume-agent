@@ -19,6 +19,23 @@ class AskRecommendationInput(BaseModel):
 
 
 class AskRecommendationTool(BaseTool):
+    """LangChain tool that provides personalized nutrition recommendations.
+
+    LangChain tool lifecycle:
+        The agent calls this tool via `.invoke()` or `.ainvoke()` (public API).
+        LangChain internally dispatches to `_run()` (sync) or `_arun()` (async).
+        These are internal hooks — not called directly by our code.
+
+        Since Kume's Telegram bot is async, the agent uses `.ainvoke()` → `_arun()`.
+        `_run()` exists as a required sync fallback per LangChain's BaseTool contract.
+
+    Context building:
+        Before calling the LLM, the tool retrieves the user's health context
+        (goals, restrictions, lab markers, documents) via the ContextBuilder.
+        The orchestrator sets the current user_id via `set_user_id()` before
+        each request so the tool knows whose context to fetch.
+    """
+
     name: str = "ask_recommendation"
     description: str = (
         "Get personalized nutrition recommendations based on the user's question about diet, meals, or health goals"
@@ -33,10 +50,12 @@ class AskRecommendationTool(BaseTool):
         self._current_user_id = user_id
 
     def _run(self, query: str) -> str:
+        """Sync fallback — required by LangChain's BaseTool contract. Prefer _arun in async contexts."""
         context = self._build_context_sync(query)
         return domain_ask_recommendation(query, llm_call=self._call_llm, context=context)
 
     async def _arun(self, query: str) -> str:
+        """Primary async entry point — called by LangChain's agent via .ainvoke()."""
         context = await self._build_context(query)
         return domain_ask_recommendation(query, llm_call=self._call_llm, context=context)
 
