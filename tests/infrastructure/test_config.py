@@ -10,6 +10,9 @@ def test_from_env_loads_all_values(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TOOL_MODEL", "gpt-3.5-turbo")
     monkeypatch.setenv("MAX_AGENT_ITERATIONS", "10")
     monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@host:5433/mydb")
+    monkeypatch.setenv("OPENAI_EMBEDDING_MODEL", "text-embedding-ada-002")
+    monkeypatch.setenv("LOG_FORMAT", "json")
 
     s = Settings.from_env()
 
@@ -19,6 +22,9 @@ def test_from_env_loads_all_values(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.tool_model == "gpt-3.5-turbo"
     assert s.max_agent_iterations == 10
     assert s.log_level == "DEBUG"
+    assert s.database_url == "postgresql+asyncpg://u:p@host:5433/mydb"
+    assert s.openai_embedding_model == "text-embedding-ada-002"
+    assert s.log_format == "json"
 
 
 def test_from_env_uses_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -29,6 +35,9 @@ def test_from_env_uses_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("TOOL_MODEL", raising=False)
     monkeypatch.delenv("MAX_AGENT_ITERATIONS", raising=False)
     monkeypatch.delenv("LOG_LEVEL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("OPENAI_EMBEDDING_MODEL", raising=False)
+    monkeypatch.delenv("LOG_FORMAT", raising=False)
 
     s = Settings.from_env()
 
@@ -36,6 +45,9 @@ def test_from_env_uses_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.tool_model == "gpt-4o-mini"
     assert s.max_agent_iterations == 5
     assert s.log_level == "INFO"
+    assert s.database_url == "postgresql+asyncpg://kume:kume@localhost:5432/kume"
+    assert s.openai_embedding_model == "text-embedding-3-small"
+    assert s.log_format == "pretty"
 
 
 def test_from_env_raises_when_telegram_token_missing(monkeypatch: pytest.MonkeyPatch) -> None:

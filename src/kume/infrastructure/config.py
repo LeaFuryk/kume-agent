@@ -10,6 +10,9 @@ class Settings:
     tool_model: str
     max_agent_iterations: int
     log_level: str
+    database_url: str
+    openai_embedding_model: str
+    log_format: str
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -29,4 +32,10 @@ class Settings:
             tool_model=os.environ.get("TOOL_MODEL", "gpt-4o-mini"),
             max_agent_iterations=max_iterations,
             log_level=os.environ.get("LOG_LEVEL", "INFO"),
+            database_url=os.environ.get(
+                "DATABASE_URL",
+                "postgresql+asyncpg://kume:kume@localhost:5432/kume",
+            ),
+            openai_embedding_model=os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
+            log_format=os.environ.get("LOG_FORMAT", "pretty"),
         )
