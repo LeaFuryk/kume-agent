@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from kume.domain.entities import Document, Goal, LabMarker, Restriction, User
+from kume.domain.entities import Document, Goal, LabMarker, Meal, Restriction, User
 from kume.ports.output.llm import LLMPort
 from kume.ports.output.repositories import (
     DocumentRepository,
     EmbeddingRepository,
     GoalRepository,
     LabMarkerRepository,
+    MealRepository,
     RestrictionRepository,
     UserRepository,
 )
@@ -141,3 +142,21 @@ class FakeVisionPort(VisionPort):
             "mime_type": mime_type,
         }
         return self.response_text
+
+
+class FakeMealRepository(MealRepository):
+    """A minimal MealRepository implementation for testing."""
+
+    def __init__(self) -> None:
+        self.saved_meals: list[Meal] = []
+
+    async def save(self, meal: Meal) -> None:
+        self.saved_meals.append(meal)
+
+    async def get_by_user(
+        self,
+        user_id: str,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> list[Meal]:
+        return [m for m in self.saved_meals if m.user_id == user_id]

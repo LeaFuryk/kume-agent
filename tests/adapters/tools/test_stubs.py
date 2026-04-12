@@ -1,16 +1,4 @@
-from kume.adapters.tools.stubs import LogMealTool, RequestReportTool
-
-
-class TestLogMealTool:
-    def test_name_and_description(self) -> None:
-        tool = LogMealTool()
-        assert tool.name == "log_meal"
-        assert "meal" in tool.description.lower()
-
-    def test_returns_coming_soon(self) -> None:
-        tool = LogMealTool()
-        result = tool.invoke({"query": "I had pasta for lunch"})
-        assert "coming soon" in result.lower()
+from kume.adapters.tools.stubs import RequestReportTool
 
 
 class TestRequestReportTool:

@@ -18,6 +18,7 @@ from kume.adapters.output.postgres_db import (
     PostgresDocumentRepository,
     PostgresGoalRepository,
     PostgresLabMarkerRepository,
+    PostgresMealRepository,
     PostgresRestrictionRepository,
     PostgresUserRepository,
     create_session_factory,
@@ -44,6 +45,7 @@ from kume.ports.output.repositories import (
     EmbeddingRepository,
     GoalRepository,
     LabMarkerRepository,
+    MealRepository,
     RestrictionRepository,
     UserRepository,
 )
@@ -60,11 +62,13 @@ class _RepositoryContextDataProvider(ContextDataProvider):
         restriction_repo: RestrictionRepository,
         marker_repo: LabMarkerRepository,
         embedding_repo: EmbeddingRepository,
+        meal_repo: MealRepository,
     ) -> None:
         self._goal_repo = goal_repo
         self._restriction_repo = restriction_repo
         self._marker_repo = marker_repo
         self._embedding_repo = embedding_repo
+        self._meal_repo = meal_repo
 
     async def get_goals(self, user_id: str) -> list[Any]:
         return await self._goal_repo.get_by_user(user_id)
@@ -79,7 +83,7 @@ class _RepositoryContextDataProvider(ContextDataProvider):
         return await self._embedding_repo.search(user_id, query)
 
     async def get_recent_meals(self, user_id: str) -> list[Any]:
-        return []  # TODO: wire MealRepository once PostgresMealRepository is available
+        return await self._meal_repo.get_by_user(user_id, limit=10)
 
 
 class Container:
@@ -105,6 +109,9 @@ class Container:
 
     def marker_repo(self) -> LabMarkerRepository:
         return PostgresLabMarkerRepository(self._session_factory)
+
+    def meal_repo(self) -> MealRepository:
+        return PostgresMealRepository(self._session_factory)
 
     def embedding_repo(self) -> EmbeddingRepository:
         return PGVectorEmbeddingRepository(
@@ -155,6 +162,7 @@ class Container:
             restriction_repo=self.restriction_repo(),
             marker_repo=self.marker_repo(),
             embedding_repo=self.embedding_repo(),
+            meal_repo=self.meal_repo(),
         )
         return ContextBuilder(provider=provider)
 
@@ -167,7 +175,7 @@ class Container:
         return [
             AskRecommendationTool(llm=tool_llm, context_builder=cb),
             AnalyzeFoodTool(llm=tool_llm, context_builder=cb),
-            LogMealTool(),
+            LogMealTool(meal_repo=self.meal_repo()),
             RequestReportTool(),
             SaveGoalTool(goal_repo=self.goal_repo()),
             SaveRestrictionTool(restriction_repo=self.restriction_repo()),
