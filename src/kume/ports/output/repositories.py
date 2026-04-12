@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
 
-from kume.domain.entities import Document, Goal, LabMarker, Restriction, User
+from kume.domain.entities import Document, Goal, LabMarker, Meal, Restriction, User
 
 
 class UserRepository(ABC):
@@ -52,3 +52,16 @@ class LabMarkerRepository(ABC):
         name: str | None = None,
         since: datetime | None = None,
     ) -> list[LabMarker]: ...
+
+
+class MealRepository(ABC):
+    @abstractmethod
+    async def save(self, meal: Meal) -> None: ...
+
+    @abstractmethod
+    async def get_by_user(
+        self,
+        user_id: str,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> list[Meal]: ...

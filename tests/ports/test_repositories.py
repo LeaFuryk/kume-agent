@@ -2,11 +2,12 @@ from datetime import datetime
 
 import pytest
 
-from kume.domain.entities import Document, Goal, LabMarker, Restriction, User
+from kume.domain.entities import Document, Goal, LabMarker, Meal, Restriction, User
 from kume.ports.output.repositories import (
     DocumentRepository,
     GoalRepository,
     LabMarkerRepository,
+    MealRepository,
     RestrictionRepository,
     UserRepository,
 )
@@ -16,8 +17,15 @@ from kume.ports.output.repositories import (
 
 @pytest.mark.parametrize(
     "cls",
-    [UserRepository, GoalRepository, RestrictionRepository, DocumentRepository, LabMarkerRepository],
-    ids=["UserRepository", "GoalRepository", "RestrictionRepository", "DocumentRepository", "LabMarkerRepository"],
+    [UserRepository, GoalRepository, RestrictionRepository, DocumentRepository, LabMarkerRepository, MealRepository],
+    ids=[
+        "UserRepository",
+        "GoalRepository",
+        "RestrictionRepository",
+        "DocumentRepository",
+        "LabMarkerRepository",
+        "MealRepository",
+    ],
 )
 def test_abstract_repository_cannot_be_instantiated(cls: type) -> None:
     with pytest.raises(TypeError):
@@ -122,6 +130,43 @@ async def test_lab_marker_repository_concrete() -> None:
     )
     await repo.save_many([marker])
     assert repo.saved_markers == [marker]
+    assert await repo.get_by_user("u1") == []
+
+
+class _FakeMealRepository(MealRepository):
+    async def save(self, meal: Meal) -> None:
+        self.saved_meal = meal
+
+    async def get_by_user(
+        self,
+        user_id: str,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> list[Meal]:
+        return []
+
+
+async def test_meal_repository_concrete() -> None:
+    repo = _FakeMealRepository()
+    meal = Meal(
+        id="meal1",
+        user_id="u1",
+        description="Grilled chicken with rice",
+        calories=450.0,
+        protein_g=35.0,
+        carbs_g=50.0,
+        fat_g=10.0,
+        fiber_g=3.0,
+        sodium_mg=600.0,
+        sugar_g=2.0,
+        saturated_fat_g=2.5,
+        cholesterol_mg=85.0,
+        confidence=0.85,
+        image_present=True,
+        logged_at=datetime(2026, 4, 12),
+    )
+    await repo.save(meal)
+    assert repo.saved_meal == meal
     assert await repo.get_by_user("u1") == []
 
 
