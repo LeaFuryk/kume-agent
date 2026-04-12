@@ -63,17 +63,20 @@ class OrchestratorService:
         callback_handler = MetricsCallbackHandler(collector)
 
         # Resolve telegram_id -> user_id and set in request-scoped context.
-        # Uses contextvars (async-safe) — each task gets its own copy.
+        # Include user name in message prefix so LLM knows who it's talking to.
+        user_prefix = ""
         if self._user_repo is not None:
             try:
                 user = await self._user_repo.get_or_create(telegram_id)
                 set_context(RequestContext(user_id=user.id, telegram_id=telegram_id, language="en"))
+                if user.name:
+                    user_prefix = f"[User: {user.name}]\n"
             except Exception:
                 logger.warning("Failed to resolve user_id for telegram_id=%d", telegram_id, exc_info=True)
 
         try:
             result = await self._agent.ainvoke(
-                {"messages": [HumanMessage(content=text)]},
+                {"messages": [HumanMessage(content=f"{user_prefix}{text}")]},
                 config={
                     "callbacks": [callback_handler],
                     "recursion_limit": self._max_iterations * 2,

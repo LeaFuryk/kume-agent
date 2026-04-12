@@ -28,6 +28,9 @@ def markdown_to_telegram_html(text: str) -> str:
     # Escape HTML in the remaining (non-code) text
     text = html.escape(text)
 
+    # Headings (### → bold, since Telegram has no heading tags)
+    text = re.sub(r"^#{1,6}\s+(.+)$", r"<b>\1</b>", text, flags=re.MULTILINE)
+
     # Apply inline formatting (only on non-code text)
     # Handle ***bold italic*** before ** and * to avoid crossed tags
     text = re.sub(r"\*\*\*(.+?)\*\*\*", r"<b><i>\1</i></b>", text)
