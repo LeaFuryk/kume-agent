@@ -3,6 +3,7 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from kume.adapters.input.status_messages import get_status_message
 from kume.ports.output.messaging import MessagingPort
 from kume.services.ingestion import IngestionService, UnsupportedMediaType
 from kume.services.orchestrator import OrchestratorService
@@ -50,6 +51,7 @@ class TelegramBotAdapter:
     async def handle_media(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         chat_id = update.effective_chat.id if update.effective_chat else 0
         telegram_id = update.effective_user.id if update.effective_user else 0
+        lang = update.effective_user.language_code if update.effective_user else None
 
         if not update.message:
             return
@@ -82,19 +84,28 @@ class TelegramBotAdapter:
 
         logger.info("Received media (mime=%s) from telegram_id=%d", mime_type, telegram_id)
 
+        await self._messaging.send_message(chat_id, get_status_message("processing_media", lang))
+
+        if mime_type == "application/pdf":
+            await self._messaging.send_message(chat_id, get_status_message("extracting_pdf", lang))
+        elif mime_type and mime_type.startswith("audio/"):
+            await self._messaging.send_message(chat_id, get_status_message("transcribing_audio", lang))
+
         try:
             tg_file = await context.bot.get_file(file_id)
             raw_bytes = bytes(await tg_file.download_as_bytearray())
             extracted_text = await self._ingestion.process(raw_bytes, mime_type)
-        except UnsupportedMediaType as exc:
-            await self._messaging.send_message(
-                chat_id,
-                f"Sorry, I don't support {exc.mime_type} files yet.",
-            )
+        except UnsupportedMediaType:
+            await self._messaging.send_message(chat_id, get_status_message("unsupported_media", lang))
             return
 
         caption = update.message.caption or ""
         combined = f"{caption}\n\n{extracted_text}".strip() if caption else extracted_text
+
+        await self._messaging.send_message(
+            chat_id,
+            get_status_message("ingestion_complete", lang, details=extracted_text[:100]),
+        )
 
         response = await self._orchestrator.process(telegram_id, combined)
         await self._messaging.send_message(chat_id, response)

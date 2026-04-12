@@ -1,9 +1,10 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from kume.adapters.input.status_messages import get_status_message
 from kume.adapters.input.telegram_bot import TelegramBotAdapter
 from kume.ports.output.messaging import MessagingPort
 from kume.services.ingestion import IngestionService, UnsupportedMediaType
@@ -135,12 +136,14 @@ def _make_media_update(
     audio: MagicMock | None = None,
     photo: list[MagicMock] | None = None,
     caption: str | None = None,
+    language_code: str | None = "en",
 ) -> MagicMock:
     update = MagicMock(spec=Update)
     update.effective_chat = MagicMock()
     update.effective_chat.id = chat_id
     update.effective_user = MagicMock()
     update.effective_user.id = user_id
+    update.effective_user.language_code = language_code
     update.message = MagicMock()
     update.message.document = document
     update.message.voice = voice
@@ -182,7 +185,14 @@ async def test_handle_media_pdf_document(
         12345,
         "My lab results\n\nExtracted: cholesterol 200mg/dL",
     )
-    messaging.send_message.assert_awaited_once_with(67890, "Your cholesterol is within range.")
+    messaging.send_message.assert_has_awaits(
+        [
+            call(67890, get_status_message("processing_media", "en")),
+            call(67890, get_status_message("extracting_pdf", "en")),
+            call(67890, get_status_message("ingestion_complete", "en", details="Extracted: cholesterol 200mg/dL")),
+            call(67890, "Your cholesterol is within range."),
+        ]
+    )
 
 
 async def test_handle_media_voice_message(
@@ -207,7 +217,14 @@ async def test_handle_media_voice_message(
     ingestion.process.assert_awaited_once_with(b"ogg-bytes", "audio/ogg")
     # No caption, so only extracted text is sent
     orchestrator.process.assert_awaited_once_with(12345, "I ate a salad for lunch")
-    messaging.send_message.assert_awaited_once_with(67890, "Great choice!")
+    messaging.send_message.assert_has_awaits(
+        [
+            call(67890, get_status_message("processing_media", "en")),
+            call(67890, get_status_message("transcribing_audio", "en")),
+            call(67890, get_status_message("ingestion_complete", "en", details="I ate a salad for lunch")),
+            call(67890, "Great choice!"),
+        ]
+    )
 
 
 async def test_handle_media_unsupported_type_sends_error(
@@ -228,9 +245,11 @@ async def test_handle_media_unsupported_type_sends_error(
     await media_adapter.handle_media(update, context)
 
     orchestrator.process.assert_not_awaited()
-    messaging.send_message.assert_awaited_once_with(
-        67890,
-        "Sorry, I don't support video/mp4 files yet.",
+    messaging.send_message.assert_has_awaits(
+        [
+            call(67890, get_status_message("processing_media", "en")),
+            call(67890, get_status_message("unsupported_media", "en")),
+        ]
     )
 
 
@@ -259,6 +278,14 @@ async def test_handle_media_photo(
     orchestrator.process.assert_awaited_once_with(
         12345,
         "What is this?\n\nA plate of grilled chicken with rice",
+    )
+    # Photos (image/jpeg) get processing_media but no type-specific status
+    messaging.send_message.assert_has_awaits(
+        [
+            call(67890, get_status_message("processing_media", "en")),
+            call(67890, get_status_message("ingestion_complete", "en", details="A plate of grilled chicken with rice")),
+            call(67890, "That looks like a balanced meal."),
+        ]
     )
 
 
