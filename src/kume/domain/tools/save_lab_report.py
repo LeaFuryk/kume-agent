@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from typing import Protocol
@@ -57,6 +58,12 @@ Keep it concise, use bullet points, and be encouraging about progress.
 Respond in the same language as the lab report data.
 """
 
+_COMPARATIVE_INSTRUCTION = (
+    "Compare results across the different reports submitted — identify "
+    "discrepancies, trends across reports, and any markers that appear in "
+    "multiple documents. Also compare with historical data if available."
+)
+
 
 class DocumentSaver(Protocol):
     async def save(self, doc: Document) -> None: ...
@@ -100,57 +107,82 @@ class LabReportProcessor:
         self._embedder = embedder
         self._llm = llm
 
-    async def process(self, user_id: str, text: str) -> str:
-        """Parse lab report(s), save markers, compare with history, return analysis."""
-        doc_id = str(uuid4())
+    async def process(self, user_id: str, texts: list[str] | str) -> str:
+        """Parse lab report(s), save markers, compare with history, return analysis.
 
-        # 1. Extract markers from the text using structured JSON output
-        raw_response = await self._llm.complete_json(
-            system_prompt="You are a medical lab report parser.",
-            user_prompt=_EXTRACTION_PROMPT.format(text=text),
-            schema=_MARKERS_SCHEMA,
-        )
-        new_markers = _parse_markers(raw_response, doc_id, user_id)
+        Accepts a list of texts (one per document) or a single text string
+        for backward compatibility.
+        """
+        # Backward compat: wrap a single string in a list
+        if isinstance(texts, str):
+            texts = [texts]
 
-        # 2. Save document
-        if new_markers:
-            marker_names = ", ".join(m.name for m in new_markers)
-            summary = f"Lab report with {len(new_markers)} markers: {marker_names}"
-        else:
-            summary = "Lab report (no markers extracted)"
+        # 1. Fetch previous markers BEFORE saving new ones
+        previous_markers = await self._marker_reader.get_by_user(user_id)
 
-        doc = Document(
-            id=doc_id,
-            user_id=user_id,
-            type="lab_report",
-            filename="lab_report.txt",
-            summary=summary,
-            ingested_at=datetime.now(tz=UTC),
-        )
-        await self._doc_repo.save(doc)
+        # 2. Extract markers from EACH text in parallel
+        async def _extract(text: str) -> str:
+            return await self._llm.complete_json(
+                system_prompt="You are a medical lab report parser.",
+                user_prompt=_EXTRACTION_PROMPT.format(text=text),
+                schema=_MARKERS_SCHEMA,
+            )
 
-        # 3. Save new markers
-        if new_markers:
-            await self._marker_repo.save_many(new_markers)
+        raw_responses = await asyncio.gather(*[_extract(t) for t in texts])
 
-        # 4. Embed chunks
-        chunks = [text[i : i + 1000] for i in range(0, len(text), 1000)]
-        await self._embedder.embed_chunks(user_id, doc_id, chunks)
+        # 3. Save each text as a separate Document with its own markers
+        all_new_markers: list[LabMarker] = []
+        for idx, (text, raw_response) in enumerate(zip(texts, raw_responses, strict=True)):
+            doc_id = str(uuid4())
+            new_markers = _parse_markers(raw_response, doc_id, user_id)
 
-        # 5. Fetch ALL markers (including just-saved ones) for analysis
-        all_markers = await self._marker_reader.get_by_user(user_id)
+            # Save document
+            if new_markers:
+                marker_names = ", ".join(m.name for m in new_markers)
+                summary = f"Lab report with {len(new_markers)} markers: {marker_names}"
+            else:
+                summary = "Lab report (no markers extracted)"
 
-        # 6. Separate previous vs current for comparison
-        current_ids = {m.id for m in new_markers}
-        previous_markers = [m for m in all_markers if m.id not in current_ids]
+            doc = Document(
+                id=doc_id,
+                user_id=user_id,
+                type="lab_report",
+                filename=f"lab_report_{idx + 1}.txt",
+                summary=summary,
+                ingested_at=datetime.now(tz=UTC),
+            )
+            await self._doc_repo.save(doc)
 
-        # 7. Generate analysis via LLM
-        analysis = await self._generate_analysis(new_markers, previous_markers)
+            # Save markers
+            if new_markers:
+                await self._marker_repo.save_many(new_markers)
+
+            # Embed chunks
+            chunks = [text[i : i + 1000] for i in range(0, len(text), 1000)]
+            await self._embedder.embed_chunks(user_id, doc_id, chunks)
+
+            all_new_markers.extend(new_markers)
+
+        # 4. Generate analysis
+        is_multiple = len(texts) > 1
+        analysis = await self._generate_analysis(all_new_markers, previous_markers, comparative=is_multiple)
 
         return analysis
 
-    async def _generate_analysis(self, current: list[LabMarker], previous: list[LabMarker]) -> str:
-        """Ask the LLM to analyze current markers and compare with history."""
+    async def _generate_analysis(
+        self,
+        current: list[LabMarker],
+        previous: list[LabMarker],
+        *,
+        comparative: bool = False,
+    ) -> str:
+        """Ask the LLM to analyze current markers and compare with history.
+
+        Args:
+            current: Markers extracted from the new report(s).
+            previous: Markers that existed before this batch.
+            comparative: True when multiple reports were submitted at once.
+        """
         if not current:
             return "No markers could be extracted from the lab report."
 
@@ -159,7 +191,17 @@ class LabReportProcessor:
             for m in current
         )
 
-        if previous:
+        if comparative:
+            # Multiple reports submitted at once
+            comparison_instruction = _COMPARATIVE_INSTRUCTION
+            if previous:
+                history_text = "\n".join(
+                    f"- {m.name}: {m.value} {m.unit} [{m.date.strftime('%Y-%m-%d')}]" for m in previous
+                )
+                history_section = f"Previous markers (history):\n{history_text}"
+            else:
+                history_section = "No previous lab results on file — these are the first reports."
+        elif previous:
             history_text = "\n".join(
                 f"- {m.name}: {m.value} {m.unit} [{m.date.strftime('%Y-%m-%d')}]" for m in previous
             )

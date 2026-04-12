@@ -13,7 +13,7 @@ from tests.adapters.tools.conftest import (
 
 
 class TestSaveLabReportTool:
-    def _make_tool(self, llm_response: str = "[]", user_id: str = "u1") -> SaveLabReportTool:
+    def _make_tool(self, llm_response: str | list[str] = "[]", user_id: str = "u1") -> SaveLabReportTool:
         llm = FakeLLMPort(response_text=llm_response)
         doc_repo = FakeDocumentRepository()
         marker_repo = FakeLabMarkerRepository()
@@ -49,13 +49,52 @@ class TestSaveLabReportTool:
 
         tool = SaveLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
         set_context(RequestContext(user_id="u1", telegram_id=1, language="en"))
-        result = await tool.ainvoke({"text": "Glucose: 90 mg/dL"})
+        result = await tool.ainvoke({"texts": ["Glucose: 90 mg/dL"]})
 
         # Result is the analysis, not extraction summary
         assert "glucose" in result.lower()
         assert len(doc_repo.saved_docs) == 1
         assert len(marker_repo.saved_markers) == 1
         assert len(embedding_repo.embedded) == 1
+
+    @pytest.mark.asyncio
+    async def test_multiple_texts_produce_multiple_documents(self) -> None:
+        markers_json_1 = json.dumps(
+            [
+                {
+                    "name": "GLUCOSA",
+                    "value": 90.0,
+                    "unit": "mg/dL",
+                    "reference_range": "70-100 mg/dL",
+                    "date": "2025-03-01",
+                }
+            ]
+        )
+        markers_json_2 = json.dumps(
+            [
+                {
+                    "name": "COLESTEROL TOTAL",
+                    "value": 195.0,
+                    "unit": "mg/dL",
+                    "reference_range": "< 200 mg/dL",
+                    "date": "2025-03-01",
+                }
+            ]
+        )
+        # Two extractions, then one analysis
+        llm = FakeLLMPort(response_text=[markers_json_1, markers_json_2, "Comparative analysis done."])
+        doc_repo = FakeDocumentRepository()
+        marker_repo = FakeLabMarkerRepository()
+        embedding_repo = FakeEmbeddingRepository()
+
+        tool = SaveLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
+        set_context(RequestContext(user_id="u1", telegram_id=1, language="en"))
+        result = await tool.ainvoke({"texts": ["Glucose: 90 mg/dL", "Cholesterol: 195 mg/dL"]})
+
+        assert "comparative" in result.lower()
+        assert len(doc_repo.saved_docs) == 2
+        assert len(marker_repo.saved_markers) == 2
+        assert len(embedding_repo.embedded) == 2
 
     @pytest.mark.asyncio
     async def test_handles_invalid_llm_json_gracefully(self) -> None:
@@ -66,7 +105,7 @@ class TestSaveLabReportTool:
 
         tool = SaveLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
         set_context(RequestContext(user_id="u1", telegram_id=1, language="en"))
-        result = await tool.ainvoke({"text": "Some text"})
+        result = await tool.ainvoke({"texts": ["Some text"]})
 
         assert "no markers" in result.lower()
         assert len(doc_repo.saved_docs) == 1
@@ -81,7 +120,7 @@ class TestSaveLabReportTool:
 
         tool = SaveLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
         _current.set(None)
-        result = await tool.ainvoke({"text": "Some text"})
+        result = await tool.ainvoke({"texts": ["Some text"]})
         assert "Error" in result
         assert len(doc_repo.saved_docs) == 0
 

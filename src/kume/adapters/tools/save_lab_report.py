@@ -12,7 +12,7 @@ from kume.ports.output.repositories import DocumentRepository, EmbeddingReposito
 
 
 class SaveLabReportInput(BaseModel):
-    text: str = Field(description="The raw text of the lab report")
+    texts: list[str] = Field(description="List of lab report texts — one per document. Each will be saved separately.")
 
 
 class SaveLabReportTool(BaseTool):
@@ -33,6 +33,7 @@ class SaveLabReportTool(BaseTool):
     name: str = "save_lab_report"
     description: str = (
         "Parse and save NEW lab report data that the user just sent (PDF text). "
+        "Pass each document's text as a separate item in the texts list. "
         "Do NOT use this for questions about existing results — use fetch_user_context instead. "
         "Only call this when there is actual new lab report text to extract and save."
     )
@@ -44,11 +45,11 @@ class SaveLabReportTool(BaseTool):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    def _run(self, text: str) -> str:
+    def _run(self, texts: list[str]) -> str:
         """Sync fallback — required by LangChain's BaseTool contract."""
-        return asyncio.get_event_loop().run_until_complete(self._arun(text=text))
+        return asyncio.get_event_loop().run_until_complete(self._arun(texts=texts))
 
-    async def _arun(self, text: str) -> str:
+    async def _arun(self, texts: list[str]) -> str:
         """Primary async entry point — called by LangChain's agent via .ainvoke()."""
         ctx = get_context()
         if not ctx:
@@ -60,4 +61,4 @@ class SaveLabReportTool(BaseTool):
             embedder=self.embedding_repo,
             llm=self.llm,
         )
-        return await processor.process(user_id=ctx.user_id, text=text)
+        return await processor.process(user_id=ctx.user_id, texts=texts)
