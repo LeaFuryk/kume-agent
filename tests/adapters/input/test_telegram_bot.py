@@ -334,8 +334,6 @@ async def test_concurrent_messages_from_same_user_are_queued(
     the second waits and a 'busy' message is sent."""
     import asyncio
 
-    from kume.adapters.input.status_messages import get_status_message
-
     adapter = TelegramBotAdapter(orchestrator=orchestrator, messaging=messaging)
 
     # Make the first orchestrator call take a while
