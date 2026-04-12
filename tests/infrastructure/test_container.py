@@ -2,11 +2,17 @@ from unittest.mock import patch
 
 import pytest
 from langchain_openai import ChatOpenAI
+from telegram.ext import MessageHandler
 
 from kume.adapters.output.langchain_llm import LangChainLLMAdapter
+from kume.adapters.output.whisper_stt import WhisperAdapter
+from kume.adapters.tools.analyze_food import AnalyzeFoodTool
+from kume.adapters.tools.ask_recommendation import AskRecommendationTool
+from kume.domain.context import ContextBuilder
 from kume.infrastructure.config import Settings
 from kume.infrastructure.container import Container
 from kume.ports.output.llm import LLMPort
+from kume.services.ingestion import IngestionService
 
 
 @pytest.fixture
@@ -84,3 +90,55 @@ def test_repository_methods_exist(container: Container) -> None:
     assert callable(container.restriction_repo)
     assert callable(container.doc_repo)
     assert callable(container.marker_repo)
+
+
+# --- New tests for P2.13 ---
+
+
+def test_ingestion_service_returns_ingestion_service(container: Container) -> None:
+    service = container.ingestion_service()
+    assert isinstance(service, IngestionService)
+    # Verify all expected mime types are registered
+    expected_mimes = {"application/pdf", "audio/ogg", "audio/mpeg", "audio/mp4", "image/jpeg", "image/png"}
+    assert set(service._processors.keys()) == expected_mimes
+
+
+def test_context_builder_returns_context_builder(container: Container) -> None:
+    cb = container.context_builder()
+    assert isinstance(cb, ContextBuilder)
+    assert cb._provider is not None
+
+
+@patch("kume.adapters.output.whisper_stt.AsyncOpenAI")
+def test_whisper_adapter_returns_whisper_adapter(mock_openai, container: Container) -> None:
+    adapter = container.whisper_adapter()
+    assert isinstance(adapter, WhisperAdapter)
+    mock_openai.assert_called_once_with(api_key="fake-key")
+
+
+def test_tools_include_context_builder_in_ask_recommendation_and_analyze_food(container: Container) -> None:
+    tools = container.tools()
+    ask_rec = next(t for t in tools if t.name == "ask_recommendation")
+    analyze = next(t for t in tools if t.name == "analyze_food")
+
+    assert isinstance(ask_rec, AskRecommendationTool)
+    assert isinstance(analyze, AnalyzeFoodTool)
+    assert ask_rec.context_builder is not None
+    assert isinstance(ask_rec.context_builder, ContextBuilder)
+    assert analyze.context_builder is not None
+    assert isinstance(analyze.context_builder, ContextBuilder)
+
+
+@patch("kume.services.orchestrator.create_agent")
+def test_telegram_application_registers_media_handler(mock_create_agent, container: Container) -> None:
+    app = container.telegram_application()
+    handlers = app.handlers[0]  # default group 0
+    assert len(handlers) == 2
+
+    # First handler: text messages (excluding commands)
+    text_handler = handlers[0]
+    assert isinstance(text_handler, MessageHandler)
+
+    # Second handler: media (documents, voice, audio, photo)
+    media_handler = handlers[1]
+    assert isinstance(media_handler, MessageHandler)
