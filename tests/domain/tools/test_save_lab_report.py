@@ -48,6 +48,12 @@ class _FakeLLM:
         self._call_count = 0
 
     async def complete(self, system_prompt: str, user_prompt: str) -> str:
+        return self._next()
+
+    async def complete_json(self, system_prompt: str, user_prompt: str, schema: dict) -> str:
+        return self._next()
+
+    def _next(self) -> str:
         idx = min(self._call_count, len(self._responses) - 1)
         self._call_count += 1
         return self._responses[idx]

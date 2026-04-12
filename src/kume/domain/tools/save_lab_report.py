@@ -9,19 +9,34 @@ from kume.domain.entities import Document, LabMarker
 
 _EXTRACTION_PROMPT = """\
 Extract ALL lab markers from the following lab report text.
-
-Return a JSON array. Each object must have exactly these fields:
-{{"name": "MARKER NAME", "value": 123.4, "unit": "mg/dL", "reference_range": "< 200 mg/dL", "date": "YYYY-MM-DD"}}
-
-Rules:
-- "value" must be a number (float), not a string
-- "date" is the test date in ISO 8601 format, or null if not found
-- Include EVERY marker found in the text, even if the reference range is unclear
-- Return ONLY the JSON array — no markdown, no commentary, no code blocks
+Include EVERY marker found, even if the reference range is unclear.
 
 Lab report text:
 {text}
 """
+
+_MARKERS_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "markers": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Marker name, e.g. COLESTEROL TOTAL"},
+                    "value": {"type": "number", "description": "Numeric result value"},
+                    "unit": {"type": "string", "description": "Unit of measurement, e.g. mg/dL"},
+                    "reference_range": {"type": "string", "description": "Reference range, e.g. < 200 mg/dL"},
+                    "date": {"type": ["string", "null"], "description": "Test date in YYYY-MM-DD format, or null"},
+                },
+                "required": ["name", "value", "unit", "reference_range", "date"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["markers"],
+    "additionalProperties": False,
+}
 
 _ANALYSIS_PROMPT = """\
 You are a nutrition health analyst. Analyze the following lab markers and provide \
@@ -61,6 +76,7 @@ class ChunkEmbedder(Protocol):
 
 class LLM(Protocol):
     async def complete(self, system_prompt: str, user_prompt: str) -> str: ...
+    async def complete_json(self, system_prompt: str, user_prompt: str, schema: dict) -> str: ...
 
 
 class LabReportProcessor:
@@ -88,10 +104,11 @@ class LabReportProcessor:
         """Parse lab report(s), save markers, compare with history, return analysis."""
         doc_id = str(uuid4())
 
-        # 1. Extract markers from the text
-        raw_response = await self._llm.complete(
+        # 1. Extract markers from the text using structured JSON output
+        raw_response = await self._llm.complete_json(
             system_prompt="You are a medical lab report parser.",
             user_prompt=_EXTRACTION_PROMPT.format(text=text),
+            schema=_MARKERS_SCHEMA,
         )
         new_markers = _parse_markers(raw_response, doc_id, user_id)
 
@@ -190,6 +207,10 @@ def _parse_markers(raw_response: str, doc_id: str, user_id: str) -> list[LabMark
         parsed = json.loads(cleaned)
     except (json.JSONDecodeError, ValueError):
         return markers
+
+    # Handle both {"markers": [...]} (structured output) and bare [...] (legacy)
+    if isinstance(parsed, dict) and "markers" in parsed:
+        parsed = parsed["markers"]
 
     if isinstance(parsed, list):
         for item in parsed:

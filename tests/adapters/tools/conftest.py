@@ -27,7 +27,13 @@ class FakeLLMPort(LLMPort):
             self._responses = [response_text]
         self._call_count = 0
 
-    async def complete(self, system_prompt: str, user_prompt: str) -> str:
+    async def complete(self, system_prompt: str, user_prompt: str) -> str:  # type: ignore[override]
+        return self._next_response()
+
+    async def complete_json(self, system_prompt: str, user_prompt: str, schema: dict) -> str:  # type: ignore[override]
+        return self._next_response()
+
+    def _next_response(self) -> str:
         idx = min(self._call_count, len(self._responses) - 1)
         self._call_count += 1
         return self._responses[idx]
