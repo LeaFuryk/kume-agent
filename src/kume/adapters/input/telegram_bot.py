@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 
 from telegram import Update
@@ -5,7 +7,10 @@ from telegram.ext import ContextTypes
 
 from kume.adapters.input.message_batcher import MediaItem, MessageBatcher, PendingBatch
 from kume.adapters.input.status_messages import get_status_message
+from kume.domain.tools.save_lab_report import LabReportProcessor
+from kume.infrastructure.request_context import RequestContext, set_context
 from kume.ports.output.messaging import MessagingPort
+from kume.ports.output.repositories import UserRepository
 from kume.services.ingestion import IngestionService, UnsupportedMediaType
 from kume.services.orchestrator import OrchestratorService
 
