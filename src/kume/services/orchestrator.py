@@ -71,12 +71,14 @@ class OrchestratorService:
 
         # Resolve telegram_id -> user and set request context.
         user_prefix = ""
+        is_new_user = False
         if self._user_repo is not None:
             try:
                 user = await self._user_repo.get_or_create(telegram_id, name=user_name)
                 set_context(RequestContext(user_id=user.id, telegram_id=telegram_id, language="en"))
-                # Best-effort: update name if Telegram profile changed and DB has no name yet
+                # If DB had no name but Telegram does, this is a first-time user
                 if user_name and not user.name:
+                    is_new_user = True
                     try:
                         from dataclasses import replace
 
@@ -85,7 +87,7 @@ class OrchestratorService:
                         user = updated
                     except Exception:
                         logger.warning("Failed to update user name for telegram_id=%d", telegram_id, exc_info=True)
-                if user.name:
+                if user.name and not is_new_user:
                     user_prefix = f"[User: {user.name}]\n"
             except Exception:
                 logger.warning("Failed to resolve user_id for telegram_id=%d", telegram_id, exc_info=True)

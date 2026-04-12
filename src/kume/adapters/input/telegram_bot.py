@@ -113,7 +113,10 @@ class TelegramBotAdapter:
 
         if self._batcher:
             logger.info("Queuing media (mime=%s) from telegram_id=%d", mime_type, telegram_id)
-            await self._batcher.add_media(telegram_id, chat_id, item, lang, user_name=user_name)
+            try:
+                await self._batcher.add_media(telegram_id, chat_id, item, lang, user_name=user_name)
+            except ValueError:
+                await self._messaging.send_message(chat_id, "Too many files at once. Please send fewer files.")
         else:
             # Fallback: process immediately (no batcher configured)
             await self._process_single_media(telegram_id, chat_id, lang, item)
