@@ -61,3 +61,36 @@ class TestWhisperAdapter:
 
         call_kwargs = mock_client.audio.transcriptions.create.call_args[1]
         assert call_kwargs["language"] == "es"
+
+    @pytest.mark.asyncio
+    async def test_transcribe_uses_mime_type_for_filename(self) -> None:
+        mock_response = MagicMock()
+        mock_response.text = "mp3 text"
+
+        with patch("kume.adapters.output.whisper_stt.AsyncOpenAI") as mock_openai_cls:
+            mock_client = MagicMock()
+            mock_openai_cls.return_value = mock_client
+            mock_client.audio.transcriptions.create = AsyncMock(return_value=mock_response)
+
+            adapter = WhisperAdapter(api_key="test-key")
+            result = await adapter.transcribe(b"audio", mime_type="audio/mpeg")
+
+        assert result == "mp3 text"
+        call_kwargs = mock_client.audio.transcriptions.create.call_args[1]
+        assert call_kwargs["file"].name == "audio.mp3"
+
+    @pytest.mark.asyncio
+    async def test_transcribe_defaults_to_ogg_without_mime_type(self) -> None:
+        mock_response = MagicMock()
+        mock_response.text = "ogg text"
+
+        with patch("kume.adapters.output.whisper_stt.AsyncOpenAI") as mock_openai_cls:
+            mock_client = MagicMock()
+            mock_openai_cls.return_value = mock_client
+            mock_client.audio.transcriptions.create = AsyncMock(return_value=mock_response)
+
+            adapter = WhisperAdapter(api_key="test-key")
+            await adapter.transcribe(b"audio")
+
+        call_kwargs = mock_client.audio.transcriptions.create.call_args[1]
+        assert call_kwargs["file"].name == "audio.ogg"

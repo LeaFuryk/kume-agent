@@ -11,6 +11,7 @@ from kume.services.orchestrator import OrchestratorService
 logger = logging.getLogger("kume.telegram")
 
 MAX_MESSAGE_LENGTH = 4096
+MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB — Telegram's own download limit
 
 
 class TelegramBotAdapter:
@@ -93,6 +94,9 @@ class TelegramBotAdapter:
 
         try:
             tg_file = await context.bot.get_file(file_id)
+            if tg_file.file_size and tg_file.file_size > MAX_FILE_SIZE:
+                await self._messaging.send_message(chat_id, "The file is too large. Please send files under 20 MB.")
+                return
             raw_bytes = bytes(await tg_file.download_as_bytearray())
             extracted_text = await self._ingestion.process(raw_bytes, mime_type)
         except UnsupportedMediaType:

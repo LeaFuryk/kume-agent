@@ -34,7 +34,12 @@ class PrettyFormatter(logging.Formatter):
             return self._format_metrics(record.metrics)
         # For non-metrics messages, use a simple readable format
         timestamp = datetime.now(UTC).strftime("%H:%M:%S")
-        return f"{timestamp} [{record.levelname}] {record.name}: {record.getMessage()}"
+        msg = f"{timestamp} [{record.levelname}] {record.name}: {record.getMessage()}"
+        if record.exc_info and record.exc_info[1] is not None:
+            msg += "\n" + self.formatException(record.exc_info)
+        if record.stack_info:
+            msg += "\n" + record.stack_info
+        return msg
 
     def _format_metrics(self, metrics: dict) -> str:  # type: ignore[type-arg]
         rid = metrics.get("request_id", "????")[:8]

@@ -26,7 +26,7 @@ async def test_routes_to_correct_processor_by_mime_type(pdf_processor: AsyncMock
     result = await service.process(b"fake-pdf-bytes", "application/pdf")
 
     assert result == "extracted pdf text"
-    pdf_processor.process.assert_awaited_once_with(b"fake-pdf-bytes")
+    pdf_processor.process.assert_awaited_once_with(b"fake-pdf-bytes", mime_type="application/pdf")
 
 
 async def test_raises_unsupported_media_type_for_unknown_mime() -> None:
@@ -55,5 +55,5 @@ async def test_multiple_processors_registered(
 
     assert pdf_result == "extracted pdf text"
     assert audio_result == "transcribed audio text"
-    pdf_processor.process.assert_awaited_once_with(b"pdf-data")
-    audio_processor.process.assert_awaited_once_with(b"audio-data")
+    pdf_processor.process.assert_awaited_once_with(b"pdf-data", mime_type="application/pdf")
+    audio_processor.process.assert_awaited_once_with(b"audio-data", mime_type="audio/ogg")

@@ -70,7 +70,11 @@ class OrchestratorService:
         collector.start_request(telegram_id)
         callback_handler = MetricsCallbackHandler(collector)
 
-        # Resolve telegram_id -> user_id and propagate to tools that need it
+        # Resolve telegram_id -> user_id and propagate to tools that need it.
+        # TODO: set_user_id() stores mutable state on shared tool instances.
+        # Safe for single-process sequential dispatch (python-telegram-bot default),
+        # but would cause user_id contamination under concurrent requests.
+        # Fix: build tool instances per-request, or use contextvars.
         if self._user_repo is not None:
             try:
                 user = await self._user_repo.get_or_create(telegram_id)

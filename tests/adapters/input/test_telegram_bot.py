@@ -153,9 +153,10 @@ def _make_media_update(
     return update
 
 
-def _make_context_with_file(file_bytes: bytes = b"raw-file-data") -> MagicMock:
+def _make_context_with_file(file_bytes: bytes = b"raw-file-data", file_size: int | None = None) -> MagicMock:
     context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
     tg_file = AsyncMock()
+    tg_file.file_size = file_size if file_size is not None else len(file_bytes)
     tg_file.download_as_bytearray.return_value = bytearray(file_bytes)
     context.bot.get_file = AsyncMock(return_value=tg_file)
     return context
@@ -306,3 +307,25 @@ async def test_handle_media_no_ingestion_service(
 
     orchestrator.process.assert_not_awaited()
     messaging.send_message.assert_awaited_once_with(67890, "Media processing is not available.")
+
+
+async def test_handle_media_rejects_oversized_file(
+    media_adapter: TelegramBotAdapter,
+    orchestrator: AsyncMock,
+    messaging: AsyncMock,
+    ingestion: AsyncMock,
+) -> None:
+    """Files exceeding MAX_FILE_SIZE (20 MB) are rejected before download."""
+    doc = MagicMock()
+    doc.file_id = "file_big"
+    doc.mime_type = "application/pdf"
+
+    update = _make_media_update(document=doc)
+    context = _make_context_with_file(b"small", file_size=25 * 1024 * 1024)
+
+    await media_adapter.handle_media(update, context)
+
+    ingestion.process.assert_not_awaited()
+    orchestrator.process.assert_not_awaited()
+    # Should have sent processing_media + extracting_pdf + rejection message
+    assert any("too large" in str(c) for c in messaging.send_message.call_args_list)

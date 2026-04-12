@@ -9,7 +9,7 @@ def test_resource_processor_port_cannot_be_instantiated() -> None:
 
 
 class _FakeResourceProcessor(ResourceProcessorPort):
-    async def process(self, raw_bytes: bytes) -> str:
+    async def process(self, raw_bytes: bytes, *, mime_type: str | None = None) -> str:
         return f"processed:{len(raw_bytes)} bytes"
 
 

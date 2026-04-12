@@ -8,5 +8,5 @@ class AudioProcessor(ResourceProcessorPort):
     def __init__(self, stt: SpeechToTextPort) -> None:
         self._stt = stt
 
-    async def process(self, raw_bytes: bytes) -> str:
-        return await self._stt.transcribe(raw_bytes)
+    async def process(self, raw_bytes: bytes, *, mime_type: str | None = None) -> str:
+        return await self._stt.transcribe(raw_bytes, mime_type=mime_type)

@@ -11,7 +11,6 @@ from kume.ports.output.repositories import DocumentRepository, EmbeddingReposito
 
 
 class SaveLabReportInput(BaseModel):
-    user_id: str = Field(description="The user's unique identifier")
     text: str = Field(description="The raw text of the lab report")
 
 
@@ -24,6 +23,14 @@ class SaveLabReportTool(BaseTool):
         _run() is a required sync fallback; _arun() is the primary async path.
 
     Delegates to LabReportProcessor (domain) for the extraction logic.
+
+    User identity:
+        The orchestrator sets user_id via set_user_id() before each request.
+        This avoids trusting the LLM to supply user_id.
+
+        TODO: _current_user_id is mutable state on a shared instance. Safe for
+        single-process sequential dispatch (python-telegram-bot default), but
+        would cause contamination under concurrent requests. See ADR/known-limitations.
     """
 
     name: str = "save_lab_report"
@@ -33,19 +40,25 @@ class SaveLabReportTool(BaseTool):
     doc_repo: DocumentRepository = Field(exclude=True)
     marker_repo: LabMarkerRepository = Field(exclude=True)
     embedding_repo: EmbeddingRepository = Field(exclude=True)
+    _current_user_id: str | None = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    def _run(self, user_id: str, text: str) -> str:
-        """Sync fallback — required by LangChain's BaseTool contract."""
-        return asyncio.get_event_loop().run_until_complete(self._arun(user_id=user_id, text=text))
+    def set_user_id(self, user_id: str) -> None:
+        self._current_user_id = user_id
 
-    async def _arun(self, user_id: str, text: str) -> str:
+    def _run(self, text: str) -> str:
+        """Sync fallback — required by LangChain's BaseTool contract."""
+        return asyncio.get_event_loop().run_until_complete(self._arun(text=text))
+
+    async def _arun(self, text: str) -> str:
         """Primary async entry point — called by LangChain's agent via .ainvoke()."""
+        if not self._current_user_id:
+            return "Error: user_id not set. Cannot save lab report."
         processor = LabReportProcessor(
             doc_repo=self.doc_repo,
             marker_repo=self.marker_repo,
             embedder=self.embedding_repo,
             llm=self.llm,
         )
-        return await processor.process(user_id=user_id, text=text)
+        return await processor.process(user_id=self._current_user_id, text=text)
