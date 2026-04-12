@@ -69,6 +69,7 @@ class RequestMetrics:
             sum(call.latency_ms for call in self.llm_calls)
             + sum(execution.latency_ms for execution in self.tool_executions)
             + sum(e.latency_ms for e in self.embeddings)
+            + sum(i.total_latency_ms for i in self.ingestions)
         )
 
     @property

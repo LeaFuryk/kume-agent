@@ -100,8 +100,12 @@ def _parse_markers(raw_response: str, doc_id: str, user_id: str) -> list[LabMark
     markers: list[LabMarker] = []
     try:
         parsed = json.loads(raw_response)
-        if isinstance(parsed, list):
-            for item in parsed:
+    except (json.JSONDecodeError, ValueError):
+        return markers
+
+    if isinstance(parsed, list):
+        for item in parsed:
+            try:
                 marker_date_str = item.get("date")
                 if marker_date_str:
                     marker_date = datetime.fromisoformat(marker_date_str).replace(tzinfo=UTC)
@@ -120,6 +124,6 @@ def _parse_markers(raw_response: str, doc_id: str, user_id: str) -> list[LabMark
                         date=marker_date,
                     )
                 )
-    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-        pass
+            except (KeyError, TypeError, ValueError):
+                continue  # skip malformed item, keep others
     return markers

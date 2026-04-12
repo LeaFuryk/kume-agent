@@ -12,6 +12,7 @@ logger = logging.getLogger("kume.telegram")
 
 MAX_MESSAGE_LENGTH = 4096
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB — Telegram's own download limit
+MAX_EXTRACTED_TEXT = 8000
 
 
 class TelegramBotAdapter:
@@ -99,6 +100,8 @@ class TelegramBotAdapter:
                 return
             raw_bytes = bytes(await tg_file.download_as_bytearray())
             extracted_text = await self._ingestion.process(raw_bytes, mime_type)
+            if len(extracted_text) > MAX_EXTRACTED_TEXT:
+                extracted_text = extracted_text[:MAX_EXTRACTED_TEXT] + "\n\n[Text truncated — original was longer]"
         except UnsupportedMediaType:
             await self._messaging.send_message(chat_id, get_status_message("unsupported_media", lang))
             return

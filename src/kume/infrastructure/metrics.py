@@ -11,7 +11,7 @@ from langchain_community.callbacks.openai_info import TokenType, get_openai_toke
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.outputs import LLMResult
 
-from kume.domain.metrics import LLMCallMetric, RequestMetrics, ToolExecutionMetric
+from kume.domain.metrics import EmbeddingMetric, IngestionMetric, LLMCallMetric, RequestMetrics, ToolExecutionMetric
 
 logger = logging.getLogger("kume.metrics")
 
@@ -35,6 +35,8 @@ def _metrics_to_dict(metrics: RequestMetrics) -> dict[str, Any]:
     data["total_latency_ms"] = metrics.total_latency_ms
     data["total_input_tokens"] = metrics.total_input_tokens
     data["total_output_tokens"] = metrics.total_output_tokens
+    data["total_embedding_tokens"] = sum(e.token_count for e in metrics.embeddings)
+    data["total_chunks_ingested"] = sum(i.chunks_created for i in metrics.ingestions)
     return data
 
 
@@ -47,12 +49,20 @@ class MetricsCollector:
         self._start_time = datetime.now(UTC)
         self._llm_calls: list[LLMCallMetric] = []
         self._tool_executions: list[ToolExecutionMetric] = []
+        self._embeddings: list[EmbeddingMetric] = []
+        self._ingestions: list[IngestionMetric] = []
 
     def record_llm_call(self, metric: LLMCallMetric) -> None:
         self._llm_calls.append(metric)
 
     def record_tool_execution(self, metric: ToolExecutionMetric) -> None:
         self._tool_executions.append(metric)
+
+    def record_embedding(self, metric: EmbeddingMetric) -> None:
+        self._embeddings.append(metric)
+
+    def record_ingestion(self, metric: IngestionMetric) -> None:
+        self._ingestions.append(metric)
 
     def end_request(self) -> RequestMetrics:
         metrics = RequestMetrics(
@@ -62,6 +72,8 @@ class MetricsCollector:
             end_time=datetime.now(UTC),
             llm_calls=list(self._llm_calls),
             tool_executions=list(self._tool_executions),
+            embeddings=list(self._embeddings),
+            ingestions=list(self._ingestions),
         )
         logger.info("request_metrics", extra={"metrics": _metrics_to_dict(metrics)})
         return metrics
