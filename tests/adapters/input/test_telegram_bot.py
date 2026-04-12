@@ -4,6 +4,7 @@ import pytest
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from kume.adapters.input.message_batcher import BatchItem, MediaItem, MessageBatcher, PendingBatch
 from kume.adapters.input.status_messages import get_status_message
 from kume.adapters.input.telegram_bot import TelegramBotAdapter
 from kume.ports.output.messaging import MessagingPort
@@ -29,8 +30,22 @@ def ingestion() -> AsyncMock:
 
 
 @pytest.fixture
-def adapter(orchestrator: AsyncMock, messaging: AsyncMock) -> TelegramBotAdapter:
-    return TelegramBotAdapter(orchestrator=orchestrator, messaging=messaging)
+def batcher() -> AsyncMock:
+    return AsyncMock(spec=MessageBatcher)
+
+
+@pytest.fixture
+def adapter(
+    orchestrator: AsyncMock,
+    messaging: AsyncMock,
+    batcher: AsyncMock,
+) -> TelegramBotAdapter:
+    """Adapter with batcher (standard path)."""
+    return TelegramBotAdapter(
+        orchestrator=orchestrator,
+        messaging=messaging,
+        batcher=batcher,
+    )
 
 
 @pytest.fixture
@@ -38,93 +53,50 @@ def media_adapter(
     orchestrator: AsyncMock,
     messaging: AsyncMock,
     ingestion: AsyncMock,
+    batcher: AsyncMock,
 ) -> TelegramBotAdapter:
-    return TelegramBotAdapter(orchestrator=orchestrator, messaging=messaging, ingestion=ingestion)
+    """Adapter with batcher + ingestion (media path)."""
+    return TelegramBotAdapter(
+        orchestrator=orchestrator,
+        messaging=messaging,
+        ingestion=ingestion,
+        batcher=batcher,
+    )
 
 
-# ---- Existing text handler tests ----
-
-
-async def test_handle_message_valid_text(
-    adapter: TelegramBotAdapter,
+@pytest.fixture
+def batch_adapter(
     orchestrator: AsyncMock,
     messaging: AsyncMock,
-) -> None:
+    ingestion: AsyncMock,
+) -> TelegramBotAdapter:
+    """Adapter without batcher — for testing _process_batch directly."""
+    return TelegramBotAdapter(
+        orchestrator=orchestrator,
+        messaging=messaging,
+        ingestion=ingestion,
+    )
+
+
+# ---- Helpers ----
+
+
+def _make_text_update(
+    text: str,
+    user_id: int = 12345,
+    chat_id: int = 67890,
+    language_code: str | None = "en",
+) -> MagicMock:
     update = MagicMock(spec=Update)
     update.message = MagicMock()
-    update.message.text = "What should I eat?"
+    update.message.text = text
     update.effective_user = MagicMock()
-    update.effective_user.id = 12345
+    update.effective_user.id = user_id
+    update.effective_user.language_code = language_code
+    update.effective_user.first_name = "TestUser"
     update.effective_chat = MagicMock()
-    update.effective_chat.id = 67890
-    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
-
-    orchestrator.process.return_value = "Eat more vegetables!"
-
-    await adapter.handle_message(update, context)
-
-    orchestrator.process.assert_awaited_once_with(12345, "What should I eat?")
-    messaging.send_message.assert_awaited_once_with(67890, "Eat more vegetables!")
-
-
-async def test_handle_message_non_text(
-    adapter: TelegramBotAdapter,
-    orchestrator: AsyncMock,
-    messaging: AsyncMock,
-) -> None:
-    update = MagicMock(spec=Update)
-    update.message = MagicMock()
-    update.message.text = None
-    update.effective_chat = MagicMock()
-    update.effective_chat.id = 67890
-    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
-
-    await adapter.handle_message(update, context)
-
-    orchestrator.process.assert_not_awaited()
-    messaging.send_message.assert_awaited_once_with(
-        67890,
-        "I can only handle text messages for now.",
-    )
-
-
-async def test_handle_message_no_message(
-    adapter: TelegramBotAdapter,
-    orchestrator: AsyncMock,
-    messaging: AsyncMock,
-) -> None:
-    update = MagicMock(spec=Update)
-    update.message = None
-    update.effective_chat = MagicMock()
-    update.effective_chat.id = 67890
-    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
-
-    await adapter.handle_message(update, context)
-
-    orchestrator.process.assert_not_awaited()
-    messaging.send_message.assert_awaited_once_with(
-        67890,
-        "I can only handle text messages for now.",
-    )
-
-
-async def test_handle_message_no_message_no_chat(
-    adapter: TelegramBotAdapter,
-    orchestrator: AsyncMock,
-    messaging: AsyncMock,
-) -> None:
-    update = MagicMock(spec=Update)
-    update.message = None
-    update.effective_chat = None
-    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
-
-    await adapter.handle_message(update, context)
-
-    orchestrator.process.assert_not_awaited()
-    messaging.send_message.assert_not_awaited()
-
-
-# ---- Media handler tests ----
+    update.effective_chat.id = chat_id
+    return update
 
 
 def _make_media_update(
@@ -144,6 +116,7 @@ def _make_media_update(
     update.effective_user = MagicMock()
     update.effective_user.id = user_id
     update.effective_user.language_code = language_code
+    update.effective_user.first_name = "TestUser"
     update.message = MagicMock()
     update.message.document = document
     update.message.voice = voice
@@ -153,7 +126,10 @@ def _make_media_update(
     return update
 
 
-def _make_context_with_file(file_bytes: bytes = b"raw-file-data", file_size: int | None = None) -> MagicMock:
+def _make_context_with_file(
+    file_bytes: bytes = b"raw-file-data",
+    file_size: int | None = None,
+) -> MagicMock:
     context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
     tg_file = AsyncMock()
     tg_file.file_size = file_size if file_size is not None else len(file_bytes)
@@ -162,12 +138,106 @@ def _make_context_with_file(file_bytes: bytes = b"raw-file-data", file_size: int
     return context
 
 
-async def test_handle_media_pdf_document(
-    media_adapter: TelegramBotAdapter,
+# ---- Text handler tests (with batcher) ----
+
+
+async def test_handle_message_adds_text_to_batcher(
+    adapter: TelegramBotAdapter,
+    batcher: AsyncMock,
     orchestrator: AsyncMock,
-    messaging: AsyncMock,
-    ingestion: AsyncMock,
 ) -> None:
+    """Text messages are added to the batcher, not processed directly."""
+    update = _make_text_update("What should I eat?")
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+
+    await adapter.handle_message(update, context)
+
+    batcher.add_text.assert_awaited_once()
+    call_args = batcher.add_text.call_args
+    assert call_args[0][:4] == (12345, 67890, "What should I eat?", "en")
+    orchestrator.process.assert_not_awaited()
+
+
+async def test_handle_message_non_text(
+    adapter: TelegramBotAdapter,
+    batcher: AsyncMock,
+    messaging: AsyncMock,
+) -> None:
+    update = MagicMock(spec=Update)
+    update.message = MagicMock()
+    update.message.text = None
+    update.effective_chat = MagicMock()
+    update.effective_chat.id = 67890
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+
+    await adapter.handle_message(update, context)
+
+    batcher.add_text.assert_not_awaited()
+    messaging.send_message.assert_awaited_once_with(
+        67890,
+        "I can only handle text messages for now.",
+    )
+
+
+async def test_handle_message_no_message(
+    adapter: TelegramBotAdapter,
+    batcher: AsyncMock,
+    messaging: AsyncMock,
+) -> None:
+    update = MagicMock(spec=Update)
+    update.message = None
+    update.effective_chat = MagicMock()
+    update.effective_chat.id = 67890
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+
+    await adapter.handle_message(update, context)
+
+    batcher.add_text.assert_not_awaited()
+    messaging.send_message.assert_awaited_once_with(
+        67890,
+        "I can only handle text messages for now.",
+    )
+
+
+async def test_handle_message_no_message_no_chat(
+    adapter: TelegramBotAdapter,
+    batcher: AsyncMock,
+    messaging: AsyncMock,
+) -> None:
+    update = MagicMock(spec=Update)
+    update.message = None
+    update.effective_chat = None
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+
+    await adapter.handle_message(update, context)
+
+    batcher.add_text.assert_not_awaited()
+    messaging.send_message.assert_not_awaited()
+
+
+async def test_handle_message_too_long(
+    adapter: TelegramBotAdapter,
+    batcher: AsyncMock,
+    messaging: AsyncMock,
+) -> None:
+    update = _make_text_update("x" * 5000)
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+
+    await adapter.handle_message(update, context)
+
+    batcher.add_text.assert_not_awaited()
+    messaging.send_message.assert_awaited_once()
+
+
+# ---- Media handler tests (with batcher) ----
+
+
+async def test_handle_media_downloads_then_adds_to_batcher(
+    media_adapter: TelegramBotAdapter,
+    batcher: AsyncMock,
+    orchestrator: AsyncMock,
+) -> None:
+    """Media files are downloaded immediately, then added to the batcher."""
     doc = MagicMock()
     doc.file_id = "file_123"
     doc.mime_type = "application/pdf"
@@ -175,119 +245,29 @@ async def test_handle_media_pdf_document(
     update = _make_media_update(document=doc, caption="My lab results")
     context = _make_context_with_file(b"pdf-bytes")
 
-    ingestion.process.return_value = "Extracted: cholesterol 200mg/dL"
-    orchestrator.process.return_value = "Your cholesterol is within range."
-
     await media_adapter.handle_media(update, context)
 
+    # File was downloaded
     context.bot.get_file.assert_awaited_once_with("file_123")
-    ingestion.process.assert_awaited_once_with(b"pdf-bytes", "application/pdf")
-    orchestrator.process.assert_awaited_once_with(
-        12345,
-        "My lab results\n\nExtracted: cholesterol 200mg/dL",
-    )
-    messaging.send_message.assert_has_awaits(
-        [
-            call(67890, get_status_message("reading_analysis", "en")),
-            call(67890, "Your cholesterol is within range."),
-        ]
-    )
 
-
-async def test_handle_media_voice_message(
-    media_adapter: TelegramBotAdapter,
-    orchestrator: AsyncMock,
-    messaging: AsyncMock,
-    ingestion: AsyncMock,
-) -> None:
-    voice = MagicMock()
-    voice.file_id = "voice_456"
-    voice.mime_type = "audio/ogg"
-
-    update = _make_media_update(voice=voice)
-    context = _make_context_with_file(b"ogg-bytes")
-
-    ingestion.process.return_value = "I ate a salad for lunch"
-    orchestrator.process.return_value = "Great choice!"
-
-    await media_adapter.handle_media(update, context)
-
-    context.bot.get_file.assert_awaited_once_with("voice_456")
-    ingestion.process.assert_awaited_once_with(b"ogg-bytes", "audio/ogg")
-    # No caption, so only extracted text is sent
-    orchestrator.process.assert_awaited_once_with(12345, "I ate a salad for lunch")
-    messaging.send_message.assert_has_awaits(
-        [
-            call(67890, get_status_message("transcribing_audio", "en")),
-            call(67890, "Great choice!"),
-        ]
-    )
-
-
-async def test_handle_media_unsupported_type_sends_error(
-    media_adapter: TelegramBotAdapter,
-    orchestrator: AsyncMock,
-    messaging: AsyncMock,
-    ingestion: AsyncMock,
-) -> None:
-    doc = MagicMock()
-    doc.file_id = "file_789"
-    doc.mime_type = "video/mp4"
-
-    update = _make_media_update(document=doc)
-    context = _make_context_with_file(b"video-bytes")
-
-    ingestion.process.side_effect = UnsupportedMediaType("video/mp4")
-
-    await media_adapter.handle_media(update, context)
+    # Added to batcher (not processed directly)
+    batcher.add_media.assert_awaited_once()
+    _, kwargs = batcher.add_media.call_args
+    if not kwargs:
+        args = batcher.add_media.call_args[0]
+        assert args[0] == 12345  # telegram_id
+        assert args[1] == 67890  # chat_id
+        item = args[2]
+        assert isinstance(item, MediaItem)
+        assert item.raw_bytes == b"pdf-bytes"
+        assert item.mime_type == "application/pdf"
+        assert item.caption == "My lab results"
 
     orchestrator.process.assert_not_awaited()
-    messaging.send_message.assert_has_awaits(
-        [
-            call(67890, get_status_message("processing_media", "en")),
-            call(67890, get_status_message("unsupported_media", "en")),
-        ]
-    )
-
-
-async def test_handle_media_photo(
-    media_adapter: TelegramBotAdapter,
-    orchestrator: AsyncMock,
-    messaging: AsyncMock,
-    ingestion: AsyncMock,
-) -> None:
-    photo_small = MagicMock()
-    photo_small.file_id = "photo_small"
-    photo_large = MagicMock()
-    photo_large.file_id = "photo_large"
-
-    update = _make_media_update(photo=[photo_small, photo_large], caption="What is this?")
-    context = _make_context_with_file(b"jpeg-bytes")
-
-    ingestion.process.return_value = "A plate of grilled chicken with rice"
-    orchestrator.process.return_value = "That looks like a balanced meal."
-
-    await media_adapter.handle_media(update, context)
-
-    # Should use the largest photo (last in list)
-    context.bot.get_file.assert_awaited_once_with("photo_large")
-    ingestion.process.assert_awaited_once_with(b"jpeg-bytes", "image/jpeg")
-    orchestrator.process.assert_awaited_once_with(
-        12345,
-        "What is this?\n\nA plate of grilled chicken with rice",
-    )
-    # Photos (image/jpeg) get processing_media — no "Done!" message
-    messaging.send_message.assert_has_awaits(
-        [
-            call(67890, get_status_message("processing_media", "en")),
-            call(67890, "That looks like a balanced meal."),
-        ]
-    )
 
 
 async def test_handle_media_no_ingestion_service(
     adapter: TelegramBotAdapter,
-    orchestrator: AsyncMock,
     messaging: AsyncMock,
 ) -> None:
     """When ingestion is not configured, send a friendly error."""
@@ -300,17 +280,15 @@ async def test_handle_media_no_ingestion_service(
 
     await adapter.handle_media(update, context)
 
-    orchestrator.process.assert_not_awaited()
     messaging.send_message.assert_awaited_once_with(67890, "Media processing is not available.")
 
 
 async def test_handle_media_rejects_oversized_file(
     media_adapter: TelegramBotAdapter,
-    orchestrator: AsyncMock,
+    batcher: AsyncMock,
     messaging: AsyncMock,
-    ingestion: AsyncMock,
 ) -> None:
-    """Files exceeding MAX_FILE_SIZE (20 MB) are rejected before download."""
+    """Files exceeding MAX_FILE_SIZE (20 MB) are rejected."""
     doc = MagicMock()
     doc.file_id = "file_big"
     doc.mime_type = "application/pdf"
@@ -320,68 +298,229 @@ async def test_handle_media_rejects_oversized_file(
 
     await media_adapter.handle_media(update, context)
 
-    ingestion.process.assert_not_awaited()
-    orchestrator.process.assert_not_awaited()
-    # Should have sent reading_analysis + rejection message
+    batcher.add_media.assert_not_awaited()
     assert any("too large" in str(c) for c in messaging.send_message.call_args_list)
 
 
-async def test_concurrent_messages_from_same_user_are_queued(
+# ---- _process_batch tests ----
+
+
+async def test_process_batch_single_text(
+    batch_adapter: TelegramBotAdapter,
     orchestrator: AsyncMock,
     messaging: AsyncMock,
 ) -> None:
-    """When a user sends a second message while the first is still processing,
-    the second waits and a 'busy' message is sent."""
-    import asyncio
+    """A batch with a single text message produces one orchestrator call."""
+    batch = PendingBatch()
+    batch.items = [BatchItem(type="text", text="What should I eat?")]
+    batch.chat_id = 67890
+    batch.language = "en"
 
-    adapter = TelegramBotAdapter(orchestrator=orchestrator, messaging=messaging)
+    orchestrator.process.return_value = "Eat more vegetables!"
 
-    # Make the first orchestrator call take a while
-    first_call_started = asyncio.Event()
-    first_call_release = asyncio.Event()
+    await batch_adapter._process_batch(12345, batch)
 
-    async def slow_process(telegram_id: int, text: str) -> str:
-        if text == "first":
-            first_call_started.set()
-            await first_call_release.wait()
-            return "response to first"
-        return "response to second"
+    orchestrator.process.assert_awaited_once_with(12345, "[User message]\nWhat should I eat?", user_name=None)
+    # Single text: no status message, just the response
+    messaging.send_message.assert_awaited_once_with(67890, "Eat more vegetables!")
 
-    orchestrator.process.side_effect = slow_process
 
-    def _make_text_update(text: str) -> MagicMock:
-        update = MagicMock(spec=Update)
-        update.message = MagicMock()
-        update.message.text = text
-        update.effective_user = MagicMock()
-        update.effective_user.id = 12345  # same user
-        update.effective_user.language_code = "en"
-        update.effective_chat = MagicMock()
-        update.effective_chat.id = 67890
-        return update
-
-    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
-
-    # Start first message processing (will block)
-    task1 = asyncio.create_task(adapter.handle_message(_make_text_update("first"), context))
-    await first_call_started.wait()
-
-    # Send second message while first is still processing
-    task2 = asyncio.create_task(adapter.handle_message(_make_text_update("second"), context))
-    await asyncio.sleep(0.05)  # let task2 hit the lock
-
-    # Second message should have triggered a "busy" message
-    busy_calls = [
-        c
-        for c in messaging.send_message.call_args_list
-        if "busy" in str(c).lower() or "moment" in str(c).lower() or "trabajando" in str(c).lower()
+async def test_process_batch_single_pdf(
+    batch_adapter: TelegramBotAdapter,
+    orchestrator: AsyncMock,
+    messaging: AsyncMock,
+    ingestion: AsyncMock,
+) -> None:
+    """A single PDF batch sends the reading_analysis status, then the response."""
+    batch = PendingBatch()
+    batch.items = [
+        BatchItem(
+            type="media",
+            media=MediaItem(raw_bytes=b"pdf-bytes", mime_type="application/pdf", caption="My labs"),
+        )
     ]
-    assert len(busy_calls) >= 1, f"Expected 'busy' message, got: {messaging.send_message.call_args_list}"
+    batch.chat_id = 67890
+    batch.language = "en"
 
-    # Release first message
-    first_call_release.set()
-    await task1
-    await task2
+    ingestion.process.return_value = "Extracted: cholesterol 200mg/dL"
+    orchestrator.process.return_value = "Your cholesterol is within range."
 
-    # Both messages should have been processed (sequentially)
-    assert orchestrator.process.await_count == 2
+    await batch_adapter._process_batch(12345, batch)
+
+    ingestion.process.assert_awaited_once_with(b"pdf-bytes", "application/pdf")
+    orchestrator.process.assert_awaited_once_with(
+        12345, "[Document] (caption: My labs)\nExtracted: cholesterol 200mg/dL", user_name=None
+    )
+    messaging.send_message.assert_has_awaits(
+        [
+            call(67890, get_status_message("reading_analysis", "en")),
+            call(67890, "Your cholesterol is within range."),
+        ]
+    )
+
+
+async def test_process_batch_multiple_pdfs_parallel(
+    batch_adapter: TelegramBotAdapter,
+    orchestrator: AsyncMock,
+    messaging: AsyncMock,
+    ingestion: AsyncMock,
+) -> None:
+    """Multiple PDFs are extracted in order and combined."""
+    batch = PendingBatch()
+    batch.items = [
+        BatchItem(
+            type="media",
+            media=MediaItem(raw_bytes=b"pdf1", mime_type="application/pdf", caption="Report 1"),
+        ),
+        BatchItem(
+            type="media",
+            media=MediaItem(raw_bytes=b"pdf2", mime_type="application/pdf", caption="Report 2"),
+        ),
+        BatchItem(
+            type="media",
+            media=MediaItem(raw_bytes=b"pdf3", mime_type="application/pdf", caption=""),
+        ),
+    ]
+    batch.chat_id = 67890
+    batch.language = "es"
+
+    ingestion.process.side_effect = ["Extracted 1", "Extracted 2", "Extracted 3"]
+    orchestrator.process.return_value = "Comparative analysis..."
+
+    await batch_adapter._process_batch(12345, batch)
+
+    # All 3 PDFs processed
+    assert ingestion.process.await_count == 3
+
+    # Orchestrator gets combined content
+    combined = orchestrator.process.call_args[0][1]
+    assert "Report 1" in combined
+    assert "Extracted 1" in combined
+    assert "Report 2" in combined
+    assert "Extracted 2" in combined
+    assert "Extracted 3" in combined
+    # Empty caption (Report 3) should not add extra text
+    assert combined.count("Report") == 2  # only 2 captions
+
+    # Batch status message for multiple items
+    messaging.send_message.assert_has_awaits(
+        [
+            call(67890, get_status_message("processing_batch", "es")),
+            call(67890, "Comparative analysis..."),
+        ]
+    )
+
+
+async def test_process_batch_mixed_text_and_pdf(
+    batch_adapter: TelegramBotAdapter,
+    orchestrator: AsyncMock,
+    messaging: AsyncMock,
+    ingestion: AsyncMock,
+) -> None:
+    """A batch with text + PDF produces one combined orchestrator call."""
+    batch = PendingBatch()
+    batch.items = [
+        BatchItem(type="text", text="Estos son mis análisis"),
+        BatchItem(
+            type="media",
+            media=MediaItem(raw_bytes=b"pdf-bytes", mime_type="application/pdf", caption="Lab results"),
+        ),
+    ]
+    batch.chat_id = 67890
+    batch.language = "es"
+
+    ingestion.process.return_value = "cholesterol: 200"
+    orchestrator.process.return_value = "Tu colesterol está bien."
+
+    await batch_adapter._process_batch(12345, batch)
+
+    combined = orchestrator.process.call_args[0][1]
+    assert "Estos son mis análisis" in combined
+    assert "Lab results" in combined
+    assert "cholesterol: 200" in combined
+
+    # Multiple items -> batch status
+    messaging.send_message.assert_has_awaits(
+        [
+            call(67890, get_status_message("processing_batch", "es")),
+            call(67890, "Tu colesterol está bien."),
+        ]
+    )
+
+
+async def test_process_batch_single_audio(
+    batch_adapter: TelegramBotAdapter,
+    orchestrator: AsyncMock,
+    messaging: AsyncMock,
+    ingestion: AsyncMock,
+) -> None:
+    """A single audio batch sends the transcribing status."""
+    batch = PendingBatch()
+    batch.items = [
+        BatchItem(
+            type="media",
+            media=MediaItem(raw_bytes=b"ogg-bytes", mime_type="audio/ogg", caption=""),
+        )
+    ]
+    batch.chat_id = 67890
+    batch.language = "en"
+
+    ingestion.process.return_value = "I ate a salad for lunch"
+    orchestrator.process.return_value = "Great choice!"
+
+    await batch_adapter._process_batch(12345, batch)
+
+    messaging.send_message.assert_has_awaits(
+        [
+            call(67890, get_status_message("transcribing_audio", "en")),
+            call(67890, "Great choice!"),
+        ]
+    )
+
+
+async def test_process_batch_unsupported_media(
+    batch_adapter: TelegramBotAdapter,
+    orchestrator: AsyncMock,
+    messaging: AsyncMock,
+    ingestion: AsyncMock,
+) -> None:
+    """Unsupported media type in batch is skipped; if all items are unsupported, error message is sent."""
+    batch = PendingBatch()
+    batch.items = [
+        BatchItem(
+            type="media",
+            media=MediaItem(raw_bytes=b"video", mime_type="video/mp4", caption=""),
+        )
+    ]
+    batch.chat_id = 67890
+    batch.language = "en"
+
+    ingestion.process.side_effect = UnsupportedMediaType("video/mp4")
+
+    await batch_adapter._process_batch(12345, batch)
+
+    orchestrator.process.assert_not_awaited()
+    messaging.send_message.assert_has_awaits(
+        [
+            call(67890, get_status_message("processing_media", "en")),
+            call(67890, get_status_message("unsupported_media", "en")),
+        ]
+    )
+
+
+async def test_process_batch_error_handling(
+    batch_adapter: TelegramBotAdapter,
+    orchestrator: AsyncMock,
+    messaging: AsyncMock,
+) -> None:
+    """Orchestrator errors are caught and a friendly message is sent."""
+    batch = PendingBatch()
+    batch.items = [BatchItem(type="text", text="hello")]
+    batch.chat_id = 67890
+    batch.language = "en"
+
+    orchestrator.process.side_effect = RuntimeError("LLM failed")
+
+    await batch_adapter._process_batch(12345, batch)
+
+    messaging.send_message.assert_awaited_once_with(67890, "Sorry, something went wrong. Please try again.")

@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Any
 
 
 class LLMPort(ABC):
@@ -11,3 +12,11 @@ class LLMPort(ABC):
 
     @abstractmethod
     async def complete(self, system_prompt: str, user_prompt: str) -> str: ...
+
+    @abstractmethod
+    async def complete_json(self, system_prompt: str, user_prompt: str, schema: dict[str, Any]) -> str:
+        """Complete with structured JSON output. The provider enforces the schema.
+
+        Returns a JSON string guaranteed to match the provided JSON Schema.
+        """
+        ...

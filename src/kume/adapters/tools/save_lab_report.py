@@ -31,7 +31,11 @@ class SaveLabReportTool(BaseTool):
     """
 
     name: str = "save_lab_report"
-    description: str = "Parse and save a lab report, extracting markers and indexing the content for retrieval"
+    description: str = (
+        "Parse and save NEW lab report data that the user just sent (PDF text). "
+        "Do NOT use this for questions about existing results — use fetch_user_context instead. "
+        "Only call this when there is actual new lab report text to extract and save."
+    )
     args_schema: type[BaseModel] = SaveLabReportInput
     llm: LLMPort = Field(exclude=True)
     doc_repo: DocumentRepository = Field(exclude=True)
@@ -52,6 +56,7 @@ class SaveLabReportTool(BaseTool):
         processor = LabReportProcessor(
             doc_repo=self.doc_repo,
             marker_repo=self.marker_repo,
+            marker_reader=self.marker_repo,  # same repo, reads + writes
             embedder=self.embedding_repo,
             llm=self.llm,
         )

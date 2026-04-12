@@ -15,13 +15,28 @@ from kume.ports.output.repositories import (
 
 
 class FakeLLMPort(LLMPort):
-    """A minimal LLMPort implementation for testing."""
+    """A minimal LLMPort implementation for testing.
 
-    def __init__(self, response_text: str = "fake response") -> None:
-        self.response_text = response_text
+    Supports multiple responses: pass a list to return different values per call.
+    """
 
-    async def complete(self, system_prompt: str, user_prompt: str) -> str:
-        return self.response_text
+    def __init__(self, response_text: str | list[str] = "fake response") -> None:
+        if isinstance(response_text, list):
+            self._responses = list(response_text)
+        else:
+            self._responses = [response_text]
+        self._call_count = 0
+
+    async def complete(self, system_prompt: str, user_prompt: str) -> str:  # type: ignore[override]
+        return self._next_response()
+
+    async def complete_json(self, system_prompt: str, user_prompt: str, schema: dict) -> str:  # type: ignore[override]
+        return self._next_response()
+
+    def _next_response(self) -> str:
+        idx = min(self._call_count, len(self._responses) - 1)
+        self._call_count += 1
+        return self._responses[idx]
 
 
 class FakeUserRepository(UserRepository):
@@ -101,4 +116,4 @@ class FakeLabMarkerRepository(LabMarkerRepository):
         name: str | None = None,
         since: datetime | None = None,
     ) -> list[LabMarker]:
-        return []
+        return [m for batch in self.saved_markers for m in batch]

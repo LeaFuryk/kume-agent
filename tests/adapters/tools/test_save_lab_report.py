@@ -29,7 +29,7 @@ class TestSaveLabReportTool:
         assert "lab report" in tool.description.lower()
 
     @pytest.mark.asyncio
-    async def test_extracts_markers_from_llm_response(self) -> None:
+    async def test_extracts_markers_and_returns_analysis(self) -> None:
         markers_json = json.dumps(
             [
                 {
@@ -41,7 +41,8 @@ class TestSaveLabReportTool:
                 }
             ]
         )
-        llm = FakeLLMPort(response_text=markers_json)
+        # First call: extraction, second call: analysis
+        llm = FakeLLMPort(response_text=[markers_json, "Your glucose is within normal range!"])
         doc_repo = FakeDocumentRepository()
         marker_repo = FakeLabMarkerRepository()
         embedding_repo = FakeEmbeddingRepository()
@@ -50,8 +51,8 @@ class TestSaveLabReportTool:
         set_context(RequestContext(user_id="u1", telegram_id=1, language="en"))
         result = await tool.ainvoke({"text": "Glucose: 90 mg/dL"})
 
-        assert "1 markers" in result or "1 marker" in result
-        assert "GLUCOSA" in result
+        # Result is the analysis, not extraction summary
+        assert "glucose" in result.lower()
         assert len(doc_repo.saved_docs) == 1
         assert len(marker_repo.saved_markers) == 1
         assert len(embedding_repo.embedded) == 1
