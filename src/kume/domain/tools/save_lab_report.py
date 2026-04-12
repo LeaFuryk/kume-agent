@@ -23,6 +23,25 @@ Lab report text:
 {text}
 """
 
+_ANALYSIS_PROMPT = """\
+You are a nutrition health analyst. Analyze the following lab markers and provide \
+a clear, actionable summary for the user.
+
+{history_section}
+
+Current markers:
+{current_markers}
+
+Provide:
+1. A brief overview of the current results — what's normal, what's out of range
+2. {comparison_instruction}
+3. Key recommendations (diet, lifestyle) based on the findings
+4. An encouraging note about next steps
+
+Keep it concise, use bullet points, and be encouraging about progress.
+Respond in the same language as the lab report data.
+"""
+
 
 class DocumentSaver(Protocol):
     async def save(self, doc: Document) -> None: ...
@@ -30,6 +49,10 @@ class DocumentSaver(Protocol):
 
 class LabMarkerSaver(Protocol):
     async def save_many(self, markers: list[LabMarker]) -> None: ...
+
+
+class LabMarkerReader(Protocol):
+    async def get_by_user(self, user_id: str) -> list[LabMarker]: ...
 
 
 class ChunkEmbedder(Protocol):
@@ -41,38 +64,41 @@ class LLM(Protocol):
 
 
 class LabReportProcessor:
-    """Processes lab report text: extracts markers via LLM, persists document and markers, embeds chunks.
+    """Processes lab report text: extracts markers, saves them, fetches history,
+    and produces a comparative analysis using the LLM.
 
-    All dependencies injected via constructor using Protocol types,
-    keeping the domain layer independent of port ABCs and frameworks.
+    All dependencies injected via constructor using Protocol types.
     """
 
     def __init__(
         self,
         doc_repo: DocumentSaver,
         marker_repo: LabMarkerSaver,
+        marker_reader: LabMarkerReader,
         embedder: ChunkEmbedder,
         llm: LLM,
     ) -> None:
         self._doc_repo = doc_repo
         self._marker_repo = marker_repo
+        self._marker_reader = marker_reader
         self._embedder = embedder
         self._llm = llm
 
     async def process(self, user_id: str, text: str) -> str:
-        """Parse a lab report, save document + markers, embed chunks. Returns summary."""
+        """Parse lab report(s), save markers, compare with history, return analysis."""
         doc_id = str(uuid4())
 
+        # 1. Extract markers from the text
         raw_response = await self._llm.complete(
             system_prompt="You are a medical lab report parser.",
             user_prompt=_EXTRACTION_PROMPT.format(text=text),
         )
+        new_markers = _parse_markers(raw_response, doc_id, user_id)
 
-        markers = _parse_markers(raw_response, doc_id, user_id)
-
-        if markers:
-            marker_names = ", ".join(m.name for m in markers)
-            summary = f"Lab report with {len(markers)} markers: {marker_names}"
+        # 2. Save document
+        if new_markers:
+            marker_names = ", ".join(m.name for m in new_markers)
+            summary = f"Lab report with {len(new_markers)} markers: {marker_names}"
         else:
             summary = "Lab report (no markers extracted)"
 
@@ -86,13 +112,59 @@ class LabReportProcessor:
         )
         await self._doc_repo.save(doc)
 
-        if markers:
-            await self._marker_repo.save_many(markers)
+        # 3. Save new markers
+        if new_markers:
+            await self._marker_repo.save_many(new_markers)
 
+        # 4. Embed chunks
         chunks = [text[i : i + 1000] for i in range(0, len(text), 1000)]
         await self._embedder.embed_chunks(user_id, doc_id, chunks)
 
-        return summary
+        # 5. Fetch ALL markers (including just-saved ones) for analysis
+        all_markers = await self._marker_reader.get_by_user(user_id)
+
+        # 6. Separate previous vs current for comparison
+        current_ids = {m.id for m in new_markers}
+        previous_markers = [m for m in all_markers if m.id not in current_ids]
+
+        # 7. Generate analysis via LLM
+        analysis = await self._generate_analysis(new_markers, previous_markers)
+
+        return analysis
+
+    async def _generate_analysis(self, current: list[LabMarker], previous: list[LabMarker]) -> str:
+        """Ask the LLM to analyze current markers and compare with history."""
+        if not current:
+            return "No markers could be extracted from the lab report."
+
+        current_text = "\n".join(
+            f"- {m.name}: {m.value} {m.unit} (ref: {m.reference_range}) [{m.date.strftime('%Y-%m-%d')}]"
+            for m in current
+        )
+
+        if previous:
+            history_text = "\n".join(
+                f"- {m.name}: {m.value} {m.unit} [{m.date.strftime('%Y-%m-%d')}]" for m in previous
+            )
+            history_section = f"Previous markers (history):\n{history_text}"
+            comparison_instruction = (
+                "Compare current vs previous results — identify trends "
+                "(improving, worsening, stable), celebrate progress, flag concerns"
+            )
+        else:
+            history_section = "No previous lab results on file — this is the first report."
+            comparison_instruction = "Since this is the first report, establish baselines and note what to watch"
+
+        prompt = _ANALYSIS_PROMPT.format(
+            history_section=history_section,
+            current_markers=current_text,
+            comparison_instruction=comparison_instruction,
+        )
+
+        return await self._llm.complete(
+            system_prompt="You are a nutrition health analyst helping a user understand their lab results.",
+            user_prompt=prompt,
+        )
 
 
 def _parse_markers(raw_response: str, doc_id: str, user_id: str) -> list[LabMarker]:
@@ -125,5 +197,5 @@ def _parse_markers(raw_response: str, doc_id: str, user_id: str) -> list[LabMark
                     )
                 )
             except (KeyError, TypeError, ValueError, AttributeError):
-                continue  # skip malformed item, keep others
+                continue
     return markers
