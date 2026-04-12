@@ -65,14 +65,15 @@ def test_tool_llm_returns_llm_port(container: Container) -> None:
     assert isinstance(llm, LangChainLLMAdapter)
 
 
-def test_tools_returns_nine_tools(container: Container) -> None:
+def test_tools_returns_ten_tools(container: Container) -> None:
     tools = container.tools()
     assert isinstance(tools, list)
-    assert len(tools) == 9
+    assert len(tools) == 10
     names = {t.name for t in tools}
     assert names == {
         "ask_recommendation",
         "analyze_food",
+        "fetch_user_context",
         "log_meal",
         "request_report",
         "save_goal",

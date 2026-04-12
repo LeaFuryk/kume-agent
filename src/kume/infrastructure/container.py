@@ -27,6 +27,7 @@ from kume.adapters.output.whisper_stt import WhisperAdapter
 from kume.adapters.tools import (
     AnalyzeFoodTool,
     AskRecommendationTool,
+    FetchContextTool,
     LogMealTool,
     RequestReportTool,
     SaveGoalTool,
@@ -175,6 +176,7 @@ class Container:
                 embedding_repo=self.embedding_repo(),
             ),
             SaveUserNameTool(user_repo=self.user_repo()),
+            FetchContextTool(context_builder=cb),
         ]
 
     def orchestrator_service(self) -> OrchestratorService:
@@ -183,7 +185,6 @@ class Container:
             tools=self.tools(),
             max_iterations=self._settings.max_agent_iterations,
             user_repo=self.user_repo(),
-            context_builder=self.context_builder(),
         )
 
     def telegram_application(self) -> Application:
