@@ -188,9 +188,7 @@ async def test_handle_media_pdf_document(
     )
     messaging.send_message.assert_has_awaits(
         [
-            call(67890, get_status_message("processing_media", "en")),
-            call(67890, get_status_message("extracting_pdf", "en")),
-            call(67890, get_status_message("ingestion_complete", "en", details="Extracted: cholesterol 200mg/dL")),
+            call(67890, get_status_message("reading_analysis", "en")),
             call(67890, "Your cholesterol is within range."),
         ]
     )
@@ -220,9 +218,7 @@ async def test_handle_media_voice_message(
     orchestrator.process.assert_awaited_once_with(12345, "I ate a salad for lunch")
     messaging.send_message.assert_has_awaits(
         [
-            call(67890, get_status_message("processing_media", "en")),
             call(67890, get_status_message("transcribing_audio", "en")),
-            call(67890, get_status_message("ingestion_complete", "en", details="I ate a salad for lunch")),
             call(67890, "Great choice!"),
         ]
     )
@@ -280,11 +276,10 @@ async def test_handle_media_photo(
         12345,
         "What is this?\n\nA plate of grilled chicken with rice",
     )
-    # Photos (image/jpeg) get processing_media but no type-specific status
+    # Photos (image/jpeg) get processing_media — no "Done!" message
     messaging.send_message.assert_has_awaits(
         [
             call(67890, get_status_message("processing_media", "en")),
-            call(67890, get_status_message("ingestion_complete", "en", details="A plate of grilled chicken with rice")),
             call(67890, "That looks like a balanced meal."),
         ]
     )
@@ -327,5 +322,66 @@ async def test_handle_media_rejects_oversized_file(
 
     ingestion.process.assert_not_awaited()
     orchestrator.process.assert_not_awaited()
-    # Should have sent processing_media + extracting_pdf + rejection message
+    # Should have sent reading_analysis + rejection message
     assert any("too large" in str(c) for c in messaging.send_message.call_args_list)
+
+
+async def test_concurrent_messages_from_same_user_are_queued(
+    orchestrator: AsyncMock,
+    messaging: AsyncMock,
+) -> None:
+    """When a user sends a second message while the first is still processing,
+    the second waits and a 'busy' message is sent."""
+    import asyncio
+
+    adapter = TelegramBotAdapter(orchestrator=orchestrator, messaging=messaging)
+
+    # Make the first orchestrator call take a while
+    first_call_started = asyncio.Event()
+    first_call_release = asyncio.Event()
+
+    async def slow_process(telegram_id: int, text: str) -> str:
+        if text == "first":
+            first_call_started.set()
+            await first_call_release.wait()
+            return "response to first"
+        return "response to second"
+
+    orchestrator.process.side_effect = slow_process
+
+    def _make_text_update(text: str) -> MagicMock:
+        update = MagicMock(spec=Update)
+        update.message = MagicMock()
+        update.message.text = text
+        update.effective_user = MagicMock()
+        update.effective_user.id = 12345  # same user
+        update.effective_user.language_code = "en"
+        update.effective_chat = MagicMock()
+        update.effective_chat.id = 67890
+        return update
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+
+    # Start first message processing (will block)
+    task1 = asyncio.create_task(adapter.handle_message(_make_text_update("first"), context))
+    await first_call_started.wait()
+
+    # Send second message while first is still processing
+    task2 = asyncio.create_task(adapter.handle_message(_make_text_update("second"), context))
+    await asyncio.sleep(0.05)  # let task2 hit the lock
+
+    # Second message should have triggered a "busy" message
+    busy_calls = [
+        c
+        for c in messaging.send_message.call_args_list
+        if "busy" in str(c).lower() or "moment" in str(c).lower() or "trabajando" in str(c).lower()
+    ]
+    assert len(busy_calls) >= 1, f"Expected 'busy' message, got: {messaging.send_message.call_args_list}"
+
+    # Release first message
+    first_call_release.set()
+    await task1
+    await task2
+
+    # Both messages should have been processed (sequentially)
+    assert orchestrator.process.await_count == 2

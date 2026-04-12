@@ -3,21 +3,21 @@ STATUS_MESSAGES = {
         "en": "👀 Looking at your document...",
         "es": "👀 Revisando tu documento...",
     },
-    "extracting_pdf": {
-        "en": "📄 Extracting text...",
-        "es": "📄 Extrayendo texto...",
+    "reading_analysis": {
+        "en": "📄 Reading your analysis...",
+        "es": "📄 Leyendo tu análisis...",
     },
     "transcribing_audio": {
-        "en": "🎙️ Transcribing your audio...",
-        "es": "🎙️ Transcribiendo tu audio...",
-    },
-    "ingestion_complete": {
-        "en": "✅ Done! {details}",
-        "es": "✅ ¡Listo! {details}",
+        "en": "🎙️ Listening to your audio...",
+        "es": "🎙️ Escuchando tu audio...",
     },
     "unsupported_media": {
         "en": "🚧 I can't process this type of file yet.",
         "es": "🚧 Todavía no puedo procesar este tipo de archivo.",
+    },
+    "busy": {
+        "en": "⏳ I'm still working on your previous message, give me a moment...",
+        "es": "⏳ Todavía estoy trabajando en tu mensaje anterior, dame un momento...",
     },
 }
 
