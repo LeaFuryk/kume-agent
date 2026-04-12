@@ -119,7 +119,7 @@ class TelegramBotAdapter:
                 await self._messaging.send_message(chat_id, "Too many files at once. Please send fewer files.")
         else:
             # Fallback: process immediately (no batcher configured)
-            await self._process_single_media(telegram_id, chat_id, lang, item)
+            await self._process_single_media(telegram_id, chat_id, lang, item, user_name=user_name)
 
     async def _process_batch(self, telegram_id: int, batch: PendingBatch) -> None:
         """Process a debounced batch: extract content, combine, and call orchestrator once."""
@@ -212,6 +212,7 @@ class TelegramBotAdapter:
         chat_id: int,
         lang: str | None,
         item: MediaItem,
+        user_name: str | None = None,
     ) -> None:
         """Fallback for processing a single media item without the batcher."""
         if item.mime_type == "application/pdf":
@@ -239,7 +240,7 @@ class TelegramBotAdapter:
         combined = f"{item.caption}\n\n{extracted_text}".strip() if item.caption else extracted_text
 
         try:
-            response = await self._orchestrator.process(telegram_id, combined)
+            response = await self._orchestrator.process(telegram_id, combined, user_name=user_name)
             await self._messaging.send_message(chat_id, response)
         except Exception:
             logger.exception("Error in orchestrator for media message, telegram_id=%d", telegram_id)
