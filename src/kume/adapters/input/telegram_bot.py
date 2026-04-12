@@ -92,16 +92,22 @@ class TelegramBotAdapter:
             await self._messaging.send_message(chat_id, "Media processing is not available.")
             return
 
-        # Download file bytes IMMEDIATELY — before adding to batcher.
-        # We don't want the debounce timer to expire while waiting for a large download.
+        # Notify batcher that a download is starting — prevents premature timer firing
+        if self._batcher:
+            self._batcher.notify_download_started(telegram_id)
+
         logger.info("Downloading media (mime=%s) from telegram_id=%d", mime_type, telegram_id)
         try:
             tg_file = await context.bot.get_file(file_id)
             if tg_file.file_size and tg_file.file_size > MAX_FILE_SIZE:
+                if self._batcher:
+                    self._batcher.notify_download_finished(telegram_id)
                 await self._messaging.send_message(chat_id, "The file is too large. Please send files under 20 MB.")
                 return
             raw_bytes = bytes(await tg_file.download_as_bytearray())
         except Exception:
+            if self._batcher:
+                self._batcher.notify_download_finished(telegram_id)
             logger.exception("Error downloading media for telegram_id=%d", telegram_id)
             await self._messaging.send_message(
                 chat_id, "Sorry, something went wrong while downloading your file. Please try again."
@@ -112,6 +118,7 @@ class TelegramBotAdapter:
         item = MediaItem(raw_bytes=raw_bytes, mime_type=mime_type, caption=caption)
 
         if self._batcher:
+            self._batcher.notify_download_finished(telegram_id)
             logger.info("Queuing media (mime=%s) from telegram_id=%d", mime_type, telegram_id)
             try:
                 await self._batcher.add_media(telegram_id, chat_id, item, lang, user_name=user_name)
