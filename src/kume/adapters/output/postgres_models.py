@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -65,3 +65,23 @@ class LabMarkerModel(Base):
     unit: Mapped[str] = mapped_column(String, nullable=False)
     reference_range: Mapped[str] = mapped_column(String, nullable=False)
     date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MealModel(Base):
+    __tablename__ = "meals"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    calories: Mapped[float] = mapped_column(Float, nullable=False)
+    protein_g: Mapped[float] = mapped_column(Float, nullable=False)
+    carbs_g: Mapped[float] = mapped_column(Float, nullable=False)
+    fat_g: Mapped[float] = mapped_column(Float, nullable=False)
+    fiber_g: Mapped[float] = mapped_column(Float, nullable=False)
+    sodium_mg: Mapped[float] = mapped_column(Float, nullable=False)
+    sugar_g: Mapped[float] = mapped_column(Float, nullable=False)
+    saturated_fat_g: Mapped[float] = mapped_column(Float, nullable=False)
+    cholesterol_mg: Mapped[float] = mapped_column(Float, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    image_present: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    logged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
