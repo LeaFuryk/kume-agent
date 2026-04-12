@@ -124,7 +124,7 @@ class MessageBatcher:
         loop = asyncio.get_running_loop()
         self._timers[telegram_id] = loop.call_later(
             self._debounce,
-            lambda tid=telegram_id: asyncio.ensure_future(self._fire(tid)),
+            lambda tid=telegram_id: asyncio.ensure_future(self._fire(tid)),  # type: ignore[misc]
         )
 
     async def _fire(self, telegram_id: int) -> None:

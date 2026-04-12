@@ -21,7 +21,9 @@ class PGVectorEmbeddingRepository(EmbeddingRepository):
     """Real embedding repository backed by PGVector + OpenAI embeddings."""
 
     def __init__(self, database_url: str, openai_api_key: str, embedding_model: str) -> None:
-        self._embeddings = OpenAIEmbeddings(model=embedding_model, api_key=openai_api_key)
+        from pydantic import SecretStr
+
+        self._embeddings = OpenAIEmbeddings(model=embedding_model, api_key=SecretStr(openai_api_key))
         # PGVector requires a synchronous connection string.
         # Replace asyncpg driver with psycopg (v3) which is available.
         sync_url = database_url.replace("+asyncpg", "+psycopg")
