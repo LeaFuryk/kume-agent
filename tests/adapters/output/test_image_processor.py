@@ -9,16 +9,16 @@ class TestImageProcessor:
         assert issubclass(ImageProcessor, ResourceProcessorPort)
 
     @pytest.mark.asyncio
-    async def test_returns_coming_soon_message(self) -> None:
+    async def test_returns_signal_text(self) -> None:
         processor = ImageProcessor()
         result = await processor.process(b"fake-image-bytes")
-        assert "coming soon" in result.lower()
+        assert "Food image attached" in result
 
     @pytest.mark.asyncio
-    async def test_message_mentions_food_photos(self) -> None:
+    async def test_message_mentions_analyze_tool(self) -> None:
         processor = ImageProcessor()
         result = await processor.process(b"\x89PNG\r\n")
-        assert "food photos" in result.lower()
+        assert "analyze_food_image" in result
 
     @pytest.mark.asyncio
     async def test_returns_string(self) -> None:

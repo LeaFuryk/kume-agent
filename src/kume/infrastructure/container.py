@@ -78,6 +78,9 @@ class _RepositoryContextDataProvider(ContextDataProvider):
     async def search_documents(self, user_id: str, query: str) -> list[str]:
         return await self._embedding_repo.search(user_id, query)
 
+    async def get_recent_meals(self, user_id: str) -> list[Any]:
+        return []  # TODO: wire MealRepository once PostgresMealRepository is available
+
 
 class Container:
     """Dependency injection container that builds the full application graph from Settings."""
