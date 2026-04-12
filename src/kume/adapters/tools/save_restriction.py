@@ -8,6 +8,7 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, ConfigDict, Field
 
 from kume.domain.entities import Restriction
+from kume.infrastructure.request_context import current_user_id
 from kume.ports.output.repositories import RestrictionRepository
 
 
@@ -25,24 +26,16 @@ class SaveRestrictionTool(BaseTool):
         _run() is a required sync fallback; _arun() is the primary async path.
 
     User identity:
-        The orchestrator sets user_id via set_user_id() before each request.
+        The orchestrator sets user_id via contextvars before each request.
         This avoids trusting the LLM to supply user_id.
-
-        TODO: _current_user_id is mutable state on a shared instance. Safe for
-        single-process sequential dispatch (python-telegram-bot default), but
-        would cause contamination under concurrent requests. See ADR/known-limitations.
     """
 
     name: str = "save_restriction"
     description: str = "Save a dietary restriction (allergy, intolerance, or diet preference) for the user"
     args_schema: type[BaseModel] = SaveRestrictionInput
     restriction_repo: RestrictionRepository = Field(exclude=True)
-    _current_user_id: str | None = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    def set_user_id(self, user_id: str) -> None:
-        self._current_user_id = user_id
 
     def _run(self, type: str, description: str) -> str:
         """Sync fallback — required by LangChain's BaseTool contract."""
@@ -50,11 +43,12 @@ class SaveRestrictionTool(BaseTool):
 
     async def _arun(self, type: str, description: str) -> str:
         """Primary async entry point — called by LangChain's agent via .ainvoke()."""
-        if not self._current_user_id:
+        user_id = current_user_id.get()
+        if not user_id:
             return "Error: user_id not set. Cannot save restriction."
         restriction = Restriction(
             id=str(uuid4()),
-            user_id=self._current_user_id,
+            user_id=user_id,
             type=type,
             description=description,
             created_at=datetime.now(tz=UTC),

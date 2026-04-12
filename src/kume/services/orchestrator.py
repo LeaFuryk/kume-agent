@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
 
 from kume.infrastructure.metrics import MetricsCallbackHandler, MetricsCollector
+from kume.infrastructure.request_context import current_user_id
 from kume.ports.output.repositories import UserRepository
 
 SYSTEM_PROMPT = """You are Kume, a personal AI nutrition assistant. You help users with:
@@ -70,17 +71,12 @@ class OrchestratorService:
         collector.start_request(telegram_id)
         callback_handler = MetricsCallbackHandler(collector)
 
-        # Resolve telegram_id -> user_id and propagate to tools that need it.
-        # TODO: set_user_id() stores mutable state on shared tool instances.
-        # Safe for single-process sequential dispatch (python-telegram-bot default),
-        # but would cause user_id contamination under concurrent requests.
-        # Fix: build tool instances per-request, or use contextvars.
+        # Resolve telegram_id -> user_id and set in request-scoped context.
+        # Uses contextvars (async-safe) — each task gets its own copy.
         if self._user_repo is not None:
             try:
                 user = await self._user_repo.get_or_create(telegram_id)
-                for tool in self._tools:
-                    if hasattr(tool, "set_user_id"):
-                        tool.set_user_id(user.id)
+                current_user_id.set(user.id)
             except Exception:
                 logger.warning("Failed to resolve user_id for telegram_id=%d", telegram_id, exc_info=True)
 

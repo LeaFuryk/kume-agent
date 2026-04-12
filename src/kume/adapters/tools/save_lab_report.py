@@ -6,6 +6,7 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, ConfigDict, Field
 
 from kume.domain.tools.save_lab_report import LabReportProcessor
+from kume.infrastructure.request_context import current_user_id
 from kume.ports.output.llm import LLMPort
 from kume.ports.output.repositories import DocumentRepository, EmbeddingRepository, LabMarkerRepository
 
@@ -25,12 +26,8 @@ class SaveLabReportTool(BaseTool):
     Delegates to LabReportProcessor (domain) for the extraction logic.
 
     User identity:
-        The orchestrator sets user_id via set_user_id() before each request.
+        The orchestrator sets user_id via contextvars before each request.
         This avoids trusting the LLM to supply user_id.
-
-        TODO: _current_user_id is mutable state on a shared instance. Safe for
-        single-process sequential dispatch (python-telegram-bot default), but
-        would cause contamination under concurrent requests. See ADR/known-limitations.
     """
 
     name: str = "save_lab_report"
@@ -40,12 +37,8 @@ class SaveLabReportTool(BaseTool):
     doc_repo: DocumentRepository = Field(exclude=True)
     marker_repo: LabMarkerRepository = Field(exclude=True)
     embedding_repo: EmbeddingRepository = Field(exclude=True)
-    _current_user_id: str | None = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    def set_user_id(self, user_id: str) -> None:
-        self._current_user_id = user_id
 
     def _run(self, text: str) -> str:
         """Sync fallback — required by LangChain's BaseTool contract."""
@@ -53,7 +46,8 @@ class SaveLabReportTool(BaseTool):
 
     async def _arun(self, text: str) -> str:
         """Primary async entry point — called by LangChain's agent via .ainvoke()."""
-        if not self._current_user_id:
+        user_id = current_user_id.get()
+        if not user_id:
             return "Error: user_id not set. Cannot save lab report."
         processor = LabReportProcessor(
             doc_repo=self.doc_repo,
@@ -61,4 +55,4 @@ class SaveLabReportTool(BaseTool):
             embedder=self.embedding_repo,
             llm=self.llm,
         )
-        return await processor.process(user_id=self._current_user_id, text=text)
+        return await processor.process(user_id=user_id, text=text)

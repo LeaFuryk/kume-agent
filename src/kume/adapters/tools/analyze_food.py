@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from kume.domain.context import ContextBuilder
 from kume.domain.tools import analyze_food as domain_analyze_food
+from kume.infrastructure.request_context import current_user_id
 from kume.ports.output.llm import LLMPort
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ class AnalyzeFoodTool(BaseTool):
 
     Context building:
         Before calling the LLM, the tool retrieves the user's health context
-        via the ContextBuilder. The orchestrator sets user_id via set_user_id().
+        via the ContextBuilder. The orchestrator sets user_id via contextvars.
     """
 
     name: str = "analyze_food"
@@ -35,12 +36,8 @@ class AnalyzeFoodTool(BaseTool):
     args_schema: type[BaseModel] = AnalyzeFoodInput
     llm: LLMPort = Field(exclude=True)
     context_builder: ContextBuilder | None = Field(default=None, exclude=True)
-    _current_user_id: str | None = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    def set_user_id(self, user_id: str) -> None:
-        self._current_user_id = user_id
 
     def _run(self, description: str) -> str:
         context = self._build_context_sync(description)
@@ -63,23 +60,23 @@ class AnalyzeFoodTool(BaseTool):
         return await self.llm.complete("", prompt)
 
     def _build_context_sync(self, query: str) -> str:
-        if self.context_builder is None or self._current_user_id is None:
+        if self.context_builder is None or current_user_id.get() is None:
             return ""
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 logger.warning("Cannot build context synchronously inside a running event loop.")
                 return ""
-            return loop.run_until_complete(self.context_builder.build(self._current_user_id, query))
+            return loop.run_until_complete(self.context_builder.build(current_user_id.get(), query))
         except RuntimeError:
             logger.warning("Failed to build context synchronously", exc_info=True)
             return ""
 
     async def _build_context(self, query: str) -> str:
-        if self.context_builder is None or self._current_user_id is None:
+        if self.context_builder is None or current_user_id.get() is None:
             return ""
         try:
-            return await self.context_builder.build(self._current_user_id, query)
+            return await self.context_builder.build(current_user_id.get(), query)
         except Exception:
             logger.warning("Failed to build context", exc_info=True)
             return ""

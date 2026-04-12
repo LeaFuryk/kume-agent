@@ -3,6 +3,7 @@ import json
 import pytest
 
 from kume.adapters.tools.save_lab_report import SaveLabReportTool
+from kume.infrastructure.request_context import current_user_id
 from tests.adapters.tools.conftest import (
     FakeDocumentRepository,
     FakeEmbeddingRepository,
@@ -19,7 +20,7 @@ class TestSaveLabReportTool:
         embedding_repo = FakeEmbeddingRepository()
 
         tool = SaveLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
-        tool.set_user_id(user_id)
+        current_user_id.set(user_id)
         return tool
 
     def test_name_and_description(self) -> None:
@@ -46,7 +47,7 @@ class TestSaveLabReportTool:
         embedding_repo = FakeEmbeddingRepository()
 
         tool = SaveLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
-        tool.set_user_id("u1")
+        current_user_id.set("u1")
         result = await tool.ainvoke({"text": "Glucose: 90 mg/dL"})
 
         assert "1 markers" in result or "1 marker" in result
@@ -63,7 +64,7 @@ class TestSaveLabReportTool:
         embedding_repo = FakeEmbeddingRepository()
 
         tool = SaveLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
-        tool.set_user_id("u1")
+        current_user_id.set("u1")
         result = await tool.ainvoke({"text": "Some text"})
 
         assert "no markers" in result.lower()
@@ -78,6 +79,7 @@ class TestSaveLabReportTool:
         embedding_repo = FakeEmbeddingRepository()
 
         tool = SaveLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
+        current_user_id.set(None)
         result = await tool.ainvoke({"text": "Some text"})
         assert "Error" in result
         assert len(doc_repo.saved_docs) == 0
