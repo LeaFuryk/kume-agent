@@ -102,9 +102,16 @@ class TestMetricsCollector:
     def test_end_request_logs_metrics(self, caplog: pytest.LogCaptureFixture) -> None:
         collector = MetricsCollector()
         collector.start_request(telegram_id=99)
-        with caplog.at_level(logging.INFO, logger="kume.metrics"):
-            collector.end_request()
-        assert any("request_metrics" in r.message for r in caplog.records)
+        # Ensure kume logger propagates so caplog can capture records
+        kume_logger = logging.getLogger("kume")
+        original_propagate = kume_logger.propagate
+        kume_logger.propagate = True
+        try:
+            with caplog.at_level(logging.INFO, logger="kume.metrics"):
+                collector.end_request()
+            assert any("request_metrics" in r.message for r in caplog.records)
+        finally:
+            kume_logger.propagate = original_propagate
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +328,7 @@ class TestJSONLogging:
 
         try:
             logger.handlers.clear()
-            setup_logging(level="DEBUG")
+            setup_logging(level="DEBUG", log_format="json")
 
             assert logger.level == logging.DEBUG
             assert logger.propagate is False

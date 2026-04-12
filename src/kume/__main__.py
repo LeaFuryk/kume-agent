@@ -8,7 +8,7 @@ from kume.infrastructure.logging import setup_logging
 def main() -> None:
     load_dotenv()
     settings = Settings.from_env()
-    setup_logging(settings.log_level)
+    setup_logging(settings.log_level, settings.log_format)
     container = Container(settings)
     app = container.telegram_application()
     app.run_polling()
