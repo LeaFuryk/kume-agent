@@ -90,7 +90,7 @@ LOG_LEVEL=INFO
 docker compose up -d
 
 # Run database migrations
-alembic upgrade head
+uv run alembic upgrade head
 
 # Start the bot
 uv run python -m kume
@@ -126,7 +126,7 @@ uv run mypy src/
 alembic revision --autogenerate -m "description"
 
 # Apply migrations
-alembic upgrade head
+uv run alembic upgrade head
 ```
 
 ## Roadmap
