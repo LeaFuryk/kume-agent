@@ -32,8 +32,9 @@ class SaveLabReportTool(BaseTool):
 
     name: str = "save_lab_report"
     description: str = (
-        "Parse and save a lab report, extracting markers, comparing with previous results, "
-        "and returning an analysis with trends and recommendations"
+        "Parse and save NEW lab report data that the user just sent (PDF text). "
+        "Do NOT use this for questions about existing results — use fetch_user_context instead. "
+        "Only call this when there is actual new lab report text to extract and save."
     )
     args_schema: type[BaseModel] = SaveLabReportInput
     llm: LLMPort = Field(exclude=True)
