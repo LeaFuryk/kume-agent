@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from kume.adapters.tools.save_lab_report import SaveLabReportTool
+from kume.adapters.tools.process_lab_report import ProcessLabReportTool
 from kume.infrastructure.request_context import RequestContext, _current, set_context
 from tests.adapters.tools.conftest import (
     FakeDocumentRepository,
@@ -12,20 +12,20 @@ from tests.adapters.tools.conftest import (
 )
 
 
-class TestSaveLabReportTool:
-    def _make_tool(self, llm_response: str | list[str] = "[]", user_id: str = "u1") -> SaveLabReportTool:
+class TestProcessLabReportTool:
+    def _make_tool(self, llm_response: str | list[str] = "[]", user_id: str = "u1") -> ProcessLabReportTool:
         llm = FakeLLMPort(response_text=llm_response)
         doc_repo = FakeDocumentRepository()
         marker_repo = FakeLabMarkerRepository()
         embedding_repo = FakeEmbeddingRepository()
 
-        tool = SaveLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
+        tool = ProcessLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
         set_context(RequestContext(user_id=user_id, telegram_id=1, language="en"))
         return tool
 
     def test_name_and_description(self) -> None:
         tool = self._make_tool()
-        assert tool.name == "save_lab_report"
+        assert tool.name == "process_lab_report"
         assert "lab report" in tool.description.lower()
 
     @pytest.mark.asyncio
@@ -47,7 +47,7 @@ class TestSaveLabReportTool:
         marker_repo = FakeLabMarkerRepository()
         embedding_repo = FakeEmbeddingRepository()
 
-        tool = SaveLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
+        tool = ProcessLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
         set_context(RequestContext(user_id="u1", telegram_id=1, language="en"))
         result = await tool.ainvoke({"texts": ["Glucose: 90 mg/dL"]})
 
@@ -87,7 +87,7 @@ class TestSaveLabReportTool:
         marker_repo = FakeLabMarkerRepository()
         embedding_repo = FakeEmbeddingRepository()
 
-        tool = SaveLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
+        tool = ProcessLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
         set_context(RequestContext(user_id="u1", telegram_id=1, language="en"))
         result = await tool.ainvoke({"texts": ["Glucose: 90 mg/dL", "Cholesterol: 195 mg/dL"]})
 
@@ -103,7 +103,7 @@ class TestSaveLabReportTool:
         marker_repo = FakeLabMarkerRepository()
         embedding_repo = FakeEmbeddingRepository()
 
-        tool = SaveLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
+        tool = ProcessLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
         set_context(RequestContext(user_id="u1", telegram_id=1, language="en"))
         result = await tool.ainvoke({"texts": ["Some text"]})
 
@@ -118,7 +118,7 @@ class TestSaveLabReportTool:
         marker_repo = FakeLabMarkerRepository()
         embedding_repo = FakeEmbeddingRepository()
 
-        tool = SaveLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
+        tool = ProcessLabReportTool(llm=llm, doc_repo=doc_repo, marker_repo=marker_repo, embedding_repo=embedding_repo)
         _current.set(None)
         result = await tool.ainvoke({"texts": ["Some text"]})
         assert "Error" in result

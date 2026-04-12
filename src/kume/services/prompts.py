@@ -125,7 +125,7 @@ Don't try to analyze empty context.
 
 ## Lab Reports
 
-When the user sends lab reports, the save_lab_report tool handles extraction, \
+When the user sends lab reports, the process_lab_report tool handles extraction, \
 comparison with previous results, and analysis automatically. Just present \
 the tool's response to the user — don't add your own analysis on top.
 """
