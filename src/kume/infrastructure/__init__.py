@@ -1,10 +1,12 @@
 from kume.infrastructure.config import Settings
-from kume.infrastructure.logging import setup_logging
+from kume.infrastructure.logging import JSONFormatter, PrettyFormatter, setup_logging
 
 __all__ = [
     "Container",
+    "JSONFormatter",
     "MetricsCallbackHandler",
     "MetricsCollector",
+    "PrettyFormatter",
     "Settings",
     "setup_logging",
 ]
