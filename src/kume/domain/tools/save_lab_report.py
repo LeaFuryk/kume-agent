@@ -124,6 +124,6 @@ def _parse_markers(raw_response: str, doc_id: str, user_id: str) -> list[LabMark
                         date=marker_date,
                     )
                 )
-            except (KeyError, TypeError, ValueError):
+            except (KeyError, TypeError, ValueError, AttributeError):
                 continue  # skip malformed item, keep others
     return markers
