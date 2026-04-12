@@ -12,6 +12,7 @@ from kume.domain.context import ContextBuilder
 from kume.infrastructure.config import Settings
 from kume.infrastructure.container import Container
 from kume.ports.output.llm import LLMPort
+from kume.ports.output.repositories import EmbeddingRepository
 from kume.services.ingestion import IngestionService
 
 
@@ -30,9 +31,21 @@ def settings() -> Settings:
     )
 
 
+class _FakeEmbeddingRepository(EmbeddingRepository):
+    """Test-only stub so container tests don't need a real PGVector / Postgres."""
+
+    async def embed_chunks(self, user_id: str, document_id: str, chunks: list[str]) -> None:
+        pass
+
+    async def search(self, user_id: str, query: str, k: int = 5) -> list[str]:
+        return []
+
+
 @pytest.fixture
 def container(settings: Settings) -> Container:
-    return Container(settings)
+    """Container with PGVector mocked out so tests don't need a real database."""
+    with patch.object(Container, "embedding_repo", return_value=_FakeEmbeddingRepository()):
+        yield Container(settings)
 
 
 def test_container_instantiation(settings: Settings) -> None:
@@ -52,10 +65,10 @@ def test_tool_llm_returns_llm_port(container: Container) -> None:
     assert isinstance(llm, LangChainLLMAdapter)
 
 
-def test_tools_returns_eight_tools(container: Container) -> None:
+def test_tools_returns_nine_tools(container: Container) -> None:
     tools = container.tools()
     assert isinstance(tools, list)
-    assert len(tools) == 8
+    assert len(tools) == 9
     names = {t.name for t in tools}
     assert names == {
         "ask_recommendation",
@@ -66,6 +79,7 @@ def test_tools_returns_eight_tools(container: Container) -> None:
         "save_restriction",
         "save_health_context",
         "save_lab_report",
+        "save_user_name",
     }
 
 

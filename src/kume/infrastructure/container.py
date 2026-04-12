@@ -13,6 +13,7 @@ from kume.adapters.output.audio_processor import AudioProcessor
 from kume.adapters.output.image_processor import ImageProcessor
 from kume.adapters.output.langchain_llm import LangChainLLMAdapter
 from kume.adapters.output.pdf_processor import PDFProcessor
+from kume.adapters.output.pgvector_embedding import PGVectorEmbeddingRepository
 from kume.adapters.output.postgres_db import (
     PostgresDocumentRepository,
     PostgresGoalRepository,
@@ -32,6 +33,7 @@ from kume.adapters.tools import (
     SaveHealthContextTool,
     SaveLabReportTool,
     SaveRestrictionTool,
+    SaveUserNameTool,
 )
 from kume.domain.context import ContextBuilder, ContextDataProvider
 from kume.infrastructure.config import Settings
@@ -46,16 +48,6 @@ from kume.ports.output.repositories import (
 )
 from kume.services.ingestion import IngestionService
 from kume.services.orchestrator import OrchestratorService
-
-
-class _StubEmbeddingRepository(EmbeddingRepository):
-    """No-op placeholder until a real embedding adapter is wired up."""
-
-    async def embed_chunks(self, user_id: str, document_id: str, chunks: list[str]) -> None:
-        pass
-
-    async def search(self, user_id: str, query: str, k: int = 5) -> list[str]:
-        return []
 
 
 class _RepositoryContextDataProvider(ContextDataProvider):
@@ -111,7 +103,11 @@ class Container:
         return PostgresLabMarkerRepository(self._session_factory)
 
     def embedding_repo(self) -> EmbeddingRepository:
-        return _StubEmbeddingRepository()
+        return PGVectorEmbeddingRepository(
+            database_url=self._settings.database_url,
+            openai_api_key=self._settings.openai_api_key,
+            embedding_model=self._settings.openai_embedding_model,
+        )
 
     # --- LLM ---
 
@@ -178,6 +174,7 @@ class Container:
                 marker_repo=self.marker_repo(),
                 embedding_repo=self.embedding_repo(),
             ),
+            SaveUserNameTool(user_repo=self.user_repo()),
         ]
 
     def orchestrator_service(self) -> OrchestratorService:
