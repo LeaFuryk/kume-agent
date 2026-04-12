@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from kume.adapters.output.postgres_models import (
@@ -46,7 +47,14 @@ class PostgresUserRepository(UserRepository):
                 id=str(uuid.uuid4()), telegram_id=telegram_id, name=name, language=language, timezone="UTC"
             )
             session.add(model)
-            await session.commit()
+            try:
+                await session.commit()
+            except IntegrityError:
+                # Another request inserted the same telegram_id concurrently
+                await session.rollback()
+                result = await session.execute(stmt)
+                row = result.scalar_one()
+                return _to_user(row)
             return _to_user(model)
 
     async def update(self, user: User) -> None:

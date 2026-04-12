@@ -31,8 +31,8 @@ def upgrade() -> None:
         sa.Column("id", sa.VARCHAR, primary_key=True),
         sa.Column("user_id", sa.VARCHAR, sa.ForeignKey("users.id"), nullable=False),
         sa.Column("description", sa.TEXT, nullable=False),
-        sa.Column("created_at", sa.TIMESTAMP, nullable=False),
-        sa.Column("completed_at", sa.TIMESTAMP, nullable=True),
+        sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False),
+        sa.Column("completed_at", sa.TIMESTAMP(timezone=True), nullable=True),
     )
 
     op.create_table(
@@ -41,8 +41,8 @@ def upgrade() -> None:
         sa.Column("user_id", sa.VARCHAR, sa.ForeignKey("users.id"), nullable=False),
         sa.Column("type", sa.VARCHAR, nullable=False),
         sa.Column("description", sa.TEXT, nullable=False),
-        sa.Column("created_at", sa.TIMESTAMP, nullable=False),
-        sa.Column("completed_at", sa.TIMESTAMP, nullable=True),
+        sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False),
+        sa.Column("completed_at", sa.TIMESTAMP(timezone=True), nullable=True),
     )
 
     op.create_table(
@@ -52,7 +52,7 @@ def upgrade() -> None:
         sa.Column("type", sa.VARCHAR, nullable=False),
         sa.Column("filename", sa.VARCHAR, nullable=False),
         sa.Column("summary", sa.TEXT, nullable=False),
-        sa.Column("ingested_at", sa.TIMESTAMP, nullable=False),
+        sa.Column("ingested_at", sa.TIMESTAMP(timezone=True), nullable=False),
     )
 
     op.create_table(
@@ -64,7 +64,7 @@ def upgrade() -> None:
         sa.Column("value", sa.FLOAT, nullable=False),
         sa.Column("unit", sa.VARCHAR, nullable=False),
         sa.Column("reference_range", sa.VARCHAR, nullable=False),
-        sa.Column("date", sa.TIMESTAMP, nullable=False),
+        sa.Column("date", sa.TIMESTAMP(timezone=True), nullable=False),
     )
 
 

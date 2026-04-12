@@ -98,6 +98,12 @@ class TelegramBotAdapter:
         except UnsupportedMediaType:
             await self._messaging.send_message(chat_id, get_status_message("unsupported_media", lang))
             return
+        except Exception:
+            logger.exception("Error processing media for telegram_id=%d", telegram_id)
+            await self._messaging.send_message(
+                chat_id, "Sorry, something went wrong while processing your file. Please try again."
+            )
+            return
 
         caption = update.message.caption or ""
         combined = f"{caption}\n\n{extracted_text}".strip() if caption else extracted_text
@@ -107,5 +113,9 @@ class TelegramBotAdapter:
             get_status_message("ingestion_complete", lang, details=extracted_text[:100]),
         )
 
-        response = await self._orchestrator.process(telegram_id, combined)
-        await self._messaging.send_message(chat_id, response)
+        try:
+            response = await self._orchestrator.process(telegram_id, combined)
+            await self._messaging.send_message(chat_id, response)
+        except Exception:
+            logger.exception("Error in orchestrator for media message, telegram_id=%d", telegram_id)
+            await self._messaging.send_message(chat_id, "Sorry, something went wrong. Please try again.")

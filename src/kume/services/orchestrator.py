@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
 
 from kume.infrastructure.metrics import MetricsCallbackHandler, MetricsCollector
+from kume.ports.output.repositories import UserRepository
 
 SYSTEM_PROMPT = """You are Kume, a personal AI nutrition assistant. You help users with:
 - Nutrition recommendations and diet advice
@@ -52,8 +53,11 @@ class OrchestratorService:
         tools: list[BaseTool],
         system_prompt: str = SYSTEM_PROMPT,
         max_iterations: int = 5,
+        user_repo: UserRepository | None = None,
     ) -> None:
         self._max_iterations = max_iterations
+        self._tools = tools
+        self._user_repo = user_repo
         self._agent = create_agent(
             model=llm,
             tools=tools,
@@ -65,6 +69,16 @@ class OrchestratorService:
         collector = MetricsCollector()
         collector.start_request(telegram_id)
         callback_handler = MetricsCallbackHandler(collector)
+
+        # Resolve telegram_id -> user_id and propagate to tools that need it
+        if self._user_repo is not None:
+            try:
+                user = await self._user_repo.get_or_create(telegram_id)
+                for tool in self._tools:
+                    if hasattr(tool, "set_user_id"):
+                        tool.set_user_id(user.id)
+            except Exception:
+                logger.warning("Failed to resolve user_id for telegram_id=%d", telegram_id, exc_info=True)
 
         try:
             result = await self._agent.ainvoke(

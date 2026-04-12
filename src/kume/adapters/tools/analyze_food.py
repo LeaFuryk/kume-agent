@@ -52,11 +52,15 @@ class AnalyzeFoodTool(BaseTool):
 
     async def _arun(self, description: str) -> str:
         context = await self._build_context(description)
-        return domain_analyze_food(
-            description,
-            llm_call=lambda p: asyncio.get_event_loop().run_until_complete(self.llm.complete("", p)),
-            context=context,
+        # Build prompt inline to avoid calling run_until_complete inside an
+        # already-running event loop.  Mirrors the prompt in
+        # domain.tools.analyze_food so behaviour stays identical.
+        prompt = (
+            f"You are a nutrition expert.\n\n{context}\n\n"
+            f"Analyze this food: {description}\n\n"
+            "Provide nutritional assessment and whether it aligns with common health goals."
         )
+        return await self.llm.complete("", prompt)
 
     def _build_context_sync(self, query: str) -> str:
         if self.context_builder is None or self._current_user_id is None:
