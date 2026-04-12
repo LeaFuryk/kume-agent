@@ -8,6 +8,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
 
+from kume.domain.context import ContextBuilder
 from kume.infrastructure.metrics import MetricsCallbackHandler, MetricsCollector
 from kume.infrastructure.request_context import RequestContext, set_context
 from kume.ports.output.repositories import UserRepository
@@ -46,10 +47,12 @@ class OrchestratorService:
         system_prompt: str = SYSTEM_PROMPT,
         max_iterations: int = 5,
         user_repo: UserRepository | None = None,
+        context_builder: ContextBuilder | None = None,
     ) -> None:
         self._max_iterations = max_iterations
         self._tools = tools
         self._user_repo = user_repo
+        self._context_builder = context_builder
         self._agent = create_agent(
             model=llm,
             tools=tools,
@@ -62,21 +65,32 @@ class OrchestratorService:
         collector.start_request(telegram_id)
         callback_handler = MetricsCallbackHandler(collector)
 
-        # Resolve telegram_id -> user_id and set in request-scoped context.
-        # Include user name in message prefix so LLM knows who it's talking to.
-        user_prefix = ""
+        # Resolve telegram_id -> user and build RAG context for every request.
+        user_context = ""
         if self._user_repo is not None:
             try:
                 user = await self._user_repo.get_or_create(telegram_id)
                 set_context(RequestContext(user_id=user.id, telegram_id=telegram_id, language="en"))
+
+                # Build RAG context (goals, restrictions, lab markers, documents)
+                if self._context_builder is not None:
+                    try:
+                        user_context = await self._context_builder.build(user.id, text)
+                    except Exception:
+                        logger.warning("Failed to build context for user_id=%s", user.id, exc_info=True)
+
+                # Prepend user identity
                 if user.name:
-                    user_prefix = f"[User: {user.name}]\n"
+                    user_context = f"[User: {user.name}]\n{user_context}" if user_context else f"[User: {user.name}]"
             except Exception:
                 logger.warning("Failed to resolve user_id for telegram_id=%d", telegram_id, exc_info=True)
 
+        # Combine context + user message
+        full_message = f"{user_context}\n\n{text}".strip() if user_context else text
+
         try:
             result = await self._agent.ainvoke(
-                {"messages": [HumanMessage(content=f"{user_prefix}{text}")]},
+                {"messages": [HumanMessage(content=full_message)]},
                 config={
                     "callbacks": [callback_handler],
                     "recursion_limit": self._max_iterations * 2,

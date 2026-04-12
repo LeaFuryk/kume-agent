@@ -183,6 +183,7 @@ class Container:
             tools=self.tools(),
             max_iterations=self._settings.max_agent_iterations,
             user_repo=self.user_repo(),
+            context_builder=self.context_builder(),
         )
 
     def telegram_application(self) -> Application:
