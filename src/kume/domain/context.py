@@ -19,6 +19,9 @@ class ContextDataProvider(ABC):
     @abstractmethod
     async def search_documents(self, user_id: str, query: str) -> list[str]: ...
 
+    @abstractmethod
+    async def get_recent_meals(self, user_id: str) -> list[Any]: ...
+
 
 class ContextBuilder:
     """Assembles RAG context in the prescribed order (CLAUDE.md rule #7).
@@ -57,6 +60,14 @@ class ContextBuilder:
         if markers:
             markers_text = "\n".join(f"- {m.name}: {m.value} {m.unit} (ref: {m.reference_range})" for m in markers)
             sections.append(f"## Recent Lab Results\n{markers_text}")
+
+        meals = await self._provider.get_recent_meals(user_id)
+        if meals:
+            meals_text = "\n".join(
+                f"- {m.description} ({m.calories} kcal, {m.protein_g}g protein, {m.carbs_g}g carbs, {m.fat_g}g fat)"
+                for m in meals
+            )
+            sections.append(f"## Recent Meals\n{meals_text}")
 
         sections.append(f"## Current Question\n{query}")
 
