@@ -143,9 +143,10 @@ class TelegramBotAdapter:
             # Extract media content
             parts: list[str] = []
 
-            # Add text messages in order
-            for text in batch.texts:
-                parts.append(text)
+            # Add user's text messages clearly labeled so the LLM mirrors their language
+            if batch.texts:
+                user_text = "\n".join(batch.texts)
+                parts.append(f"[User message]\n{user_text}")
 
             # Separate PDFs (parallel) from audio (sequential) and other media
             pdf_items: list[MediaItem] = []
@@ -168,10 +169,12 @@ class TelegramBotAdapter:
                 pdf_tasks = [self._ingestion.process(m.raw_bytes, m.mime_type) for m in pdf_items]
                 pdf_results = list(await asyncio.gather(*pdf_tasks))
 
-            for item, extracted in zip(pdf_items, pdf_results, strict=True):
+            for i, (item, extracted) in enumerate(zip(pdf_items, pdf_results, strict=True), 1):
+                label = f"[Document {i}]" if len(pdf_items) > 1 else "[Document]"
                 if item.caption:
-                    parts.append(item.caption)
-                parts.append(extracted)
+                    parts.append(f"{label} (caption: {item.caption})\n{extracted}")
+                else:
+                    parts.append(f"{label}\n{extracted}")
 
             # Process audio sequentially
             for item in audio_items:

@@ -44,6 +44,7 @@ class MessageBatcher:
         self._on_batch_ready = on_batch_ready
         self._batches: dict[int, PendingBatch] = {}
         self._timers: dict[int, asyncio.TimerHandle] = {}
+        self._processing_locks: dict[int, asyncio.Lock] = {}
 
     async def add_text(
         self,
@@ -101,10 +102,18 @@ class MessageBatcher:
         self._timers.pop(telegram_id, None)
         if batch is None:
             return
-        try:
-            await self._on_batch_ready(telegram_id, batch)
-        except Exception:
-            logger.exception(
-                "Error in batch callback for telegram_id=%d",
-                telegram_id,
-            )
+
+        # Per-user lock: if a previous batch is still being processed,
+        # this batch waits. Messages arriving during processing accumulate
+        # in a new batch and fire after this one completes.
+        if telegram_id not in self._processing_locks:
+            self._processing_locks[telegram_id] = asyncio.Lock()
+
+        async with self._processing_locks[telegram_id]:
+            try:
+                await self._on_batch_ready(telegram_id, batch)
+            except Exception:
+                logger.exception(
+                    "Error in batch callback for telegram_id=%d",
+                    telegram_id,
+                )

@@ -202,7 +202,7 @@ class Container:
             ingestion=ingestion,
         )
         batcher = MessageBatcher(
-            debounce_seconds=3.0,
+            debounce_seconds=2.0,
             on_batch_ready=bot_adapter._process_batch,
         )
         bot_adapter._batcher = batcher

@@ -316,7 +316,7 @@ async def test_process_batch_single_text(
 
     await batch_adapter._process_batch(12345, batch)
 
-    orchestrator.process.assert_awaited_once_with(12345, "What should I eat?")
+    orchestrator.process.assert_awaited_once_with(12345, "[User message]\nWhat should I eat?")
     # Single text: no status message, just the response
     messaging.send_message.assert_awaited_once_with(67890, "Eat more vegetables!")
 
@@ -339,7 +339,9 @@ async def test_process_batch_single_pdf(
     await batch_adapter._process_batch(12345, batch)
 
     ingestion.process.assert_awaited_once_with(b"pdf-bytes", "application/pdf")
-    orchestrator.process.assert_awaited_once_with(12345, "My labs\n\nExtracted: cholesterol 200mg/dL")
+    orchestrator.process.assert_awaited_once_with(
+        12345, "[Document] (caption: My labs)\nExtracted: cholesterol 200mg/dL"
+    )
     messaging.send_message.assert_has_awaits(
         [
             call(67890, get_status_message("reading_analysis", "en")),
