@@ -69,7 +69,7 @@ async def test_process_returns_string_response(orchestrator: OrchestratorService
         new_callable=AsyncMock,
         return_value={"messages": [AIMessage(content="Here is your nutrition advice.")]},
     ):
-        result = await orchestrator.process(telegram_id=12345, text="What should I eat?")
+        result = await orchestrator.process(telegram_id=12345, user_message="What should I eat?")
 
     assert isinstance(result, str)
     assert result == "Here is your nutrition advice."
@@ -82,7 +82,7 @@ async def test_process_returns_fallback_on_exception(orchestrator: OrchestratorS
         new_callable=AsyncMock,
         side_effect=RuntimeError("LLM connection failed"),
     ):
-        result = await orchestrator.process(telegram_id=12345, text="Hello")
+        result = await orchestrator.process(telegram_id=12345, user_message="Hello")
 
     assert result == "Sorry, something went wrong. Please try again."
 
@@ -94,7 +94,7 @@ async def test_process_passes_callback_handler(orchestrator: OrchestratorService
         new_callable=AsyncMock,
         return_value={"messages": [AIMessage(content="ok")]},
     ) as mock_ainvoke:
-        await orchestrator.process(telegram_id=1, text="test")
+        await orchestrator.process(telegram_id=1, user_message="test")
 
     mock_ainvoke.assert_called_once()
     call_kwargs = mock_ainvoke.call_args
@@ -111,7 +111,7 @@ async def test_process_returns_default_when_messages_empty(orchestrator: Orchest
         new_callable=AsyncMock,
         return_value={"messages": []},
     ):
-        result = await orchestrator.process(telegram_id=1, text="test")
+        result = await orchestrator.process(telegram_id=1, user_message="test")
 
     assert result == "I wasn't able to process that request."
 
@@ -123,7 +123,7 @@ async def test_process_returns_default_when_messages_key_missing(orchestrator: O
         new_callable=AsyncMock,
         return_value={},
     ):
-        result = await orchestrator.process(telegram_id=1, text="test")
+        result = await orchestrator.process(telegram_id=1, user_message="test")
 
     assert result == "I wasn't able to process that request."
 
@@ -137,7 +137,7 @@ async def test_process_handles_structured_content_blocks(orchestrator: Orchestra
         new_callable=AsyncMock,
         return_value={"messages": [AIMessage(content=structured_content)]},
     ):
-        result = await orchestrator.process(telegram_id=1, text="test")
+        result = await orchestrator.process(telegram_id=1, user_message="test")
 
     assert result == "Hello from structured block"
     assert "[{" not in result
@@ -154,7 +154,7 @@ async def test_process_sets_request_context_via_contextvar(fake_llm: FakeChatMod
         new_callable=AsyncMock,
         return_value={"messages": [AIMessage(content="ok")]},
     ):
-        await orch.process(telegram_id=99, text="hi")
+        await orch.process(telegram_id=99, user_message="hi")
 
     ctx = get_context()
     assert ctx is not None

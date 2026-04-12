@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any
 
 from langchain.agents import create_agent
@@ -15,6 +15,13 @@ from kume.ports.output.repositories import UserRepository
 from kume.services.prompts import SYSTEM_PROMPT
 
 logger = logging.getLogger("kume.orchestrator")
+
+
+@dataclass
+class Resource:
+    mime_type: str
+    transcript: str
+    raw_bytes: bytes | None = None  # kept for image tools that need the original
 
 
 def _extract_text_content(content: Any) -> str:
@@ -85,17 +92,55 @@ class OrchestratorService:
             logger.warning("Failed to resolve user_id for telegram_id=%d", telegram_id, exc_info=True)
             return ""
 
-    async def process(self, telegram_id: int, text: str, user_name: str | None = None) -> str:
+    async def process(
+        self,
+        telegram_id: int,
+        user_message: str,
+        user_name: str | None = None,
+        resources: list[Resource] | None = None,
+    ) -> str:
         """Process a user message through the agentic loop and return the response."""
         collector = MetricsCollector()
         collector.start_request(telegram_id)
         callback_handler = MetricsCallbackHandler(collector)
 
+        parts: list[str] = []
+
+        # User prefix
         user_prefix = await self._resolve_user(telegram_id, user_name)
+        if user_prefix:
+            parts.append(user_prefix.strip())
+
+        # User message
+        if user_message:
+            parts.append(f"User says: {user_message}")
+
+        # Resources
+        if resources:
+            # Count by type
+            pdf_count = sum(1 for r in resources if r.mime_type == "application/pdf")
+            img_count = sum(1 for r in resources if r.mime_type.startswith("image/"))
+            audio_count = sum(1 for r in resources if r.mime_type.startswith("audio/"))
+
+            type_summary: list[str] = []
+            if pdf_count:
+                type_summary.append(f"{pdf_count} PDF document(s)")
+            if img_count:
+                type_summary.append(f"{img_count} image(s)")
+            if audio_count:
+                type_summary.append(f"{audio_count} audio file(s)")
+
+            parts.append(f"Attached resources: {', '.join(type_summary)}")
+
+            # Add each transcript labeled
+            for i, resource in enumerate(resources, 1):
+                parts.append(f"Resource {i} ({resource.mime_type}):\n{resource.transcript}")
+
+        full_message = "\n\n".join(parts)
 
         try:
             result = await self._agent.ainvoke(
-                {"messages": [HumanMessage(content=f"{user_prefix}{text}")]},
+                {"messages": [HumanMessage(content=full_message)]},
                 config={
                     "callbacks": [callback_handler],
                     "recursion_limit": self._max_iterations * 2,
@@ -103,9 +148,9 @@ class OrchestratorService:
             )
             messages = result.get("messages", [])
             if messages:
-                text = _extract_text_content(messages[-1].content)
-                if text.strip():
-                    return text
+                response_text = _extract_text_content(messages[-1].content)
+                if response_text.strip():
+                    return response_text
             return "I wasn't able to process that request."
         except Exception:
             logger.exception("Error processing message for telegram_id=%d", telegram_id)
