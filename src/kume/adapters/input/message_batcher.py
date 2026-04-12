@@ -57,6 +57,7 @@ class MessageBatcher:
         self._batches: dict[int, PendingBatch] = {}
         self._timers: dict[int, asyncio.TimerHandle] = {}
         self._processing_locks: dict[int, asyncio.Lock] = {}
+        self._pending_downloads: dict[int, int] = {}  # per-user active download count
 
     async def add_text(
         self,
@@ -118,6 +119,15 @@ class MessageBatcher:
             batch.language = language
         return batch
 
+    def notify_download_started(self, telegram_id: int) -> None:
+        """Call BEFORE starting a file download. Prevents the timer from firing."""
+        self._pending_downloads[telegram_id] = self._pending_downloads.get(telegram_id, 0) + 1
+
+    def notify_download_finished(self, telegram_id: int) -> None:
+        """Call AFTER a file download completes (success or failure). Resets the timer."""
+        count = self._pending_downloads.get(telegram_id, 1) - 1
+        self._pending_downloads[telegram_id] = max(0, count)
+
     def _reset_timer(self, telegram_id: int) -> None:
         if telegram_id in self._timers:
             self._timers[telegram_id].cancel()
@@ -128,6 +138,10 @@ class MessageBatcher:
         )
 
     async def _fire(self, telegram_id: int) -> None:
+        # Don't fire if there are active downloads — they'll reset the timer when done
+        if self._pending_downloads.get(telegram_id, 0) > 0:
+            self._reset_timer(telegram_id)
+            return
         batch = self._batches.pop(telegram_id, None)
         self._timers.pop(telegram_id, None)
         if batch is None:

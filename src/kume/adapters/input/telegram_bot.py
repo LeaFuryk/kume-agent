@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 
 from telegram import Update
@@ -7,7 +9,7 @@ from kume.adapters.input.message_batcher import MediaItem, MessageBatcher, Pendi
 from kume.adapters.input.status_messages import get_status_message
 from kume.ports.output.messaging import MessagingPort
 from kume.services.ingestion import IngestionService, UnsupportedMediaType
-from kume.services.orchestrator import OrchestratorService
+from kume.services.orchestrator import OrchestratorService, Resource
 
 logger = logging.getLogger("kume.telegram")
 
@@ -55,7 +57,7 @@ class TelegramBotAdapter:
             await self._batcher.add_text(telegram_id, chat_id, text, lang, user_name=user_name)
         else:
             logger.info("Received message from telegram_id=%d", telegram_id)
-            response = await self._orchestrator.process(telegram_id, text, user_name=user_name)
+            response = await self._orchestrator.process(telegram_id, user_message=text, user_name=user_name)
             await self._messaging.send_message(chat_id, response)
 
     async def handle_media(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -92,16 +94,22 @@ class TelegramBotAdapter:
             await self._messaging.send_message(chat_id, "Media processing is not available.")
             return
 
-        # Download file bytes IMMEDIATELY — before adding to batcher.
-        # We don't want the debounce timer to expire while waiting for a large download.
+        # Notify batcher that a download is starting — prevents premature timer firing
+        if self._batcher:
+            self._batcher.notify_download_started(telegram_id)
+
         logger.info("Downloading media (mime=%s) from telegram_id=%d", mime_type, telegram_id)
         try:
             tg_file = await context.bot.get_file(file_id)
             if tg_file.file_size and tg_file.file_size > MAX_FILE_SIZE:
+                if self._batcher:
+                    self._batcher.notify_download_finished(telegram_id)
                 await self._messaging.send_message(chat_id, "The file is too large. Please send files under 20 MB.")
                 return
             raw_bytes = bytes(await tg_file.download_as_bytearray())
         except Exception:
+            if self._batcher:
+                self._batcher.notify_download_finished(telegram_id)
             logger.exception("Error downloading media for telegram_id=%d", telegram_id)
             await self._messaging.send_message(
                 chat_id, "Sorry, something went wrong while downloading your file. Please try again."
@@ -112,6 +120,7 @@ class TelegramBotAdapter:
         item = MediaItem(raw_bytes=raw_bytes, mime_type=mime_type, caption=caption)
 
         if self._batcher:
+            self._batcher.notify_download_finished(telegram_id)
             logger.info("Queuing media (mime=%s) from telegram_id=%d", mime_type, telegram_id)
             try:
                 await self._batcher.add_media(telegram_id, chat_id, item, lang, user_name=user_name)
@@ -122,7 +131,7 @@ class TelegramBotAdapter:
             await self._process_single_media(telegram_id, chat_id, lang, item, user_name=user_name)
 
     async def _process_batch(self, telegram_id: int, batch: PendingBatch) -> None:
-        """Process a debounced batch: extract content, combine, and call orchestrator once."""
+        """Process a debounced batch: extract content, build resources, and call orchestrator once."""
         chat_id = batch.chat_id
         lang = batch.language
 
@@ -144,25 +153,18 @@ class TelegramBotAdapter:
                 await self._messaging.send_message(chat_id, get_status_message("processing_batch", lang))
             # Single text message: no status needed
 
-            # Process items in order, extracting media content inline
-            parts: list[str] = []
-            pdf_counter = 0
-            # Count total PDFs to decide labelling
-            total_pdfs = sum(
-                1
-                for item in batch.items
-                if item.type == "media" and item.media and item.media.mime_type == "application/pdf"
-            )
+            user_texts: list[str] = []
+            resources: list[Resource] = []
             skipped_items = 0
 
             for batch_item in batch.items:
-                if batch_item.type == "text" and batch_item.text is not None:
-                    parts.append(f"[User message]\n{batch_item.text}")
-                elif batch_item.type == "media" and batch_item.media is not None:
+                if batch_item.type == "text" and batch_item.text:
+                    user_texts.append(batch_item.text)
+                elif batch_item.type == "media" and batch_item.media:
                     media = batch_item.media
                     assert self._ingestion is not None, "Ingestion required for media"
                     try:
-                        extracted = await self._ingestion.process(media.raw_bytes, media.mime_type)
+                        transcript = await self._ingestion.process(media.raw_bytes, media.mime_type)
                     except UnsupportedMediaType:
                         logger.warning(
                             "Skipping unsupported media type %s for telegram_id=%d",
@@ -171,35 +173,37 @@ class TelegramBotAdapter:
                         )
                         skipped_items += 1
                         continue
+                    resources.append(
+                        Resource(
+                            mime_type=media.mime_type,
+                            transcript=transcript,
+                            raw_bytes=media.raw_bytes if media.mime_type.startswith("image/") else None,
+                        )
+                    )
 
-                    if media.mime_type == "application/pdf":
-                        pdf_counter += 1
-                        label = f"[Document {pdf_counter}]" if total_pdfs > 1 else "[Document]"
-                        if media.caption:
-                            parts.append(f"{label} (caption: {media.caption})\n{extracted}")
-                        else:
-                            parts.append(f"{label}\n{extracted}")
-                    else:
-                        if media.caption:
-                            parts.append(media.caption)
-                        parts.append(extracted)
-
-            if not parts:
+            if not user_texts and not resources:
                 # All items were skipped (unsupported)
                 await self._messaging.send_message(chat_id, get_status_message("unsupported_media", lang))
                 return
 
-            if skipped_items:
-                parts.append(f"[{skipped_items} unsupported file(s) skipped]")
+            user_message = "\n".join(user_texts)
 
-            combined = "\n\n".join(parts)
-
-            # Truncate if needed
-            if len(combined) > MAX_EXTRACTED_TEXT:
-                combined = combined[:MAX_EXTRACTED_TEXT] + "\n\n[Text truncated — original was longer]"
+            # Truncate transcripts if needed
+            for idx, r in enumerate(resources):
+                if len(r.transcript) > MAX_EXTRACTED_TEXT:
+                    resources[idx] = Resource(
+                        mime_type=r.mime_type,
+                        transcript=r.transcript[:MAX_EXTRACTED_TEXT] + "\n[truncated]",
+                        raw_bytes=r.raw_bytes,
+                    )
 
             # ONE orchestrator call -> ONE response
-            response = await self._orchestrator.process(telegram_id, combined, user_name=batch.user_name)
+            response = await self._orchestrator.process(
+                telegram_id=telegram_id,
+                user_message=user_message,
+                user_name=batch.user_name,
+                resources=resources if resources else None,
+            )
             await self._messaging.send_message(chat_id, response)
 
         except Exception:
@@ -224,9 +228,9 @@ class TelegramBotAdapter:
 
         try:
             assert self._ingestion is not None
-            extracted_text = await self._ingestion.process(item.raw_bytes, item.mime_type)
-            if len(extracted_text) > MAX_EXTRACTED_TEXT:
-                extracted_text = extracted_text[:MAX_EXTRACTED_TEXT] + "\n\n[Text truncated — original was longer]"
+            transcript = await self._ingestion.process(item.raw_bytes, item.mime_type)
+            if len(transcript) > MAX_EXTRACTED_TEXT:
+                transcript = transcript[:MAX_EXTRACTED_TEXT] + "\n[truncated]"
         except UnsupportedMediaType:
             await self._messaging.send_message(chat_id, get_status_message("unsupported_media", lang))
             return
@@ -237,10 +241,20 @@ class TelegramBotAdapter:
             )
             return
 
-        combined = f"{item.caption}\n\n{extracted_text}".strip() if item.caption else extracted_text
+        resource = Resource(
+            mime_type=item.mime_type,
+            transcript=transcript,
+            raw_bytes=item.raw_bytes if item.mime_type.startswith("image/") else None,
+        )
+        user_message = item.caption or ""
 
         try:
-            response = await self._orchestrator.process(telegram_id, combined, user_name=user_name)
+            response = await self._orchestrator.process(
+                telegram_id=telegram_id,
+                user_message=user_message,
+                user_name=user_name,
+                resources=[resource],
+            )
             await self._messaging.send_message(chat_id, response)
         except Exception:
             logger.exception("Error in orchestrator for media message, telegram_id=%d", telegram_id)

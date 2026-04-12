@@ -320,7 +320,12 @@ async def test_process_batch_single_text(
 
     await batch_adapter._process_batch(12345, batch)
 
-    orchestrator.process.assert_awaited_once_with(12345, "[User message]\nWhat should I eat?", user_name=None)
+    orchestrator.process.assert_awaited_once_with(
+        telegram_id=12345,
+        user_message="What should I eat?",
+        user_name=None,
+        resources=None,
+    )
     # Single text: no status message, just the response
     messaging.send_message.assert_awaited_once_with(67890, "Eat more vegetables!")
 
@@ -348,9 +353,16 @@ async def test_process_batch_single_pdf(
     await batch_adapter._process_batch(12345, batch)
 
     ingestion.process.assert_awaited_once_with(b"pdf-bytes", "application/pdf")
-    orchestrator.process.assert_awaited_once_with(
-        12345, "[Document] (caption: My labs)\nExtracted: cholesterol 200mg/dL", user_name=None
-    )
+    orchestrator.process.assert_awaited_once()
+    call_kwargs = orchestrator.process.call_args.kwargs
+    assert call_kwargs["telegram_id"] == 12345
+    assert call_kwargs["user_message"] == ""
+    assert call_kwargs["user_name"] is None
+    resources = call_kwargs["resources"]
+    assert len(resources) == 1
+    assert resources[0].mime_type == "application/pdf"
+    assert resources[0].transcript == "Extracted: cholesterol 200mg/dL"
+    assert resources[0].raw_bytes is None  # PDFs don't keep raw_bytes
     messaging.send_message.assert_has_awaits(
         [
             call(67890, get_status_message("reading_analysis", "en")),
@@ -365,7 +377,7 @@ async def test_process_batch_multiple_pdfs_parallel(
     messaging: AsyncMock,
     ingestion: AsyncMock,
 ) -> None:
-    """Multiple PDFs are extracted in order and combined."""
+    """Multiple PDFs are extracted in order and passed as separate resources."""
     batch = PendingBatch()
     batch.items = [
         BatchItem(
@@ -392,15 +404,15 @@ async def test_process_batch_multiple_pdfs_parallel(
     # All 3 PDFs processed
     assert ingestion.process.await_count == 3
 
-    # Orchestrator gets combined content
-    combined = orchestrator.process.call_args[0][1]
-    assert "Report 1" in combined
-    assert "Extracted 1" in combined
-    assert "Report 2" in combined
-    assert "Extracted 2" in combined
-    assert "Extracted 3" in combined
-    # Empty caption (Report 3) should not add extra text
-    assert combined.count("Report") == 2  # only 2 captions
+    # Orchestrator gets separate resources
+    call_kwargs = orchestrator.process.call_args.kwargs
+    resources = call_kwargs["resources"]
+    assert len(resources) == 3
+    assert resources[0].transcript == "Extracted 1"
+    assert resources[1].transcript == "Extracted 2"
+    assert resources[2].transcript == "Extracted 3"
+    assert all(r.mime_type == "application/pdf" for r in resources)
+    assert call_kwargs["user_message"] == ""
 
     # Batch status message for multiple items
     messaging.send_message.assert_has_awaits(
@@ -417,7 +429,7 @@ async def test_process_batch_mixed_text_and_pdf(
     messaging: AsyncMock,
     ingestion: AsyncMock,
 ) -> None:
-    """A batch with text + PDF produces one combined orchestrator call."""
+    """A batch with text + PDF produces one orchestrator call with user_message and resources."""
     batch = PendingBatch()
     batch.items = [
         BatchItem(type="text", text="Estos son mis análisis"),
@@ -434,10 +446,12 @@ async def test_process_batch_mixed_text_and_pdf(
 
     await batch_adapter._process_batch(12345, batch)
 
-    combined = orchestrator.process.call_args[0][1]
-    assert "Estos son mis análisis" in combined
-    assert "Lab results" in combined
-    assert "cholesterol: 200" in combined
+    call_kwargs = orchestrator.process.call_args.kwargs
+    assert call_kwargs["user_message"] == "Estos son mis análisis"
+    resources = call_kwargs["resources"]
+    assert len(resources) == 1
+    assert resources[0].mime_type == "application/pdf"
+    assert resources[0].transcript == "cholesterol: 200"
 
     # Multiple items -> batch status
     messaging.send_message.assert_has_awaits(
@@ -454,7 +468,7 @@ async def test_process_batch_single_audio(
     messaging: AsyncMock,
     ingestion: AsyncMock,
 ) -> None:
-    """A single audio batch sends the transcribing status."""
+    """A single audio batch sends the transcribing status and passes resource."""
     batch = PendingBatch()
     batch.items = [
         BatchItem(
@@ -469,6 +483,13 @@ async def test_process_batch_single_audio(
     orchestrator.process.return_value = "Great choice!"
 
     await batch_adapter._process_batch(12345, batch)
+
+    call_kwargs = orchestrator.process.call_args.kwargs
+    resources = call_kwargs["resources"]
+    assert len(resources) == 1
+    assert resources[0].mime_type == "audio/ogg"
+    assert resources[0].transcript == "I ate a salad for lunch"
+    assert resources[0].raw_bytes is None  # audio doesn't keep raw_bytes
 
     messaging.send_message.assert_has_awaits(
         [

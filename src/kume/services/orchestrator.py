@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, replace
 from typing import Any
 
 from langchain.agents import create_agent
@@ -14,6 +15,13 @@ from kume.ports.output.repositories import UserRepository
 from kume.services.prompts import SYSTEM_PROMPT
 
 logger = logging.getLogger("kume.orchestrator")
+
+
+@dataclass
+class Resource:
+    mime_type: str
+    transcript: str
+    raw_bytes: bytes | None = None  # kept for image tools that need the original
 
 
 def _extract_text_content(content: Any) -> str:
@@ -56,46 +64,83 @@ class OrchestratorService:
             system_prompt=system_prompt,
         )
 
-    async def process(self, telegram_id: int, text: str, user_name: str | None = None) -> str:
-        """Process a user message through the agentic loop and return the response.
+    async def _resolve_user(self, telegram_id: int, user_name: str | None = None) -> str:
+        """Resolve telegram_id to internal user, set request context, return message prefix.
 
-        Args:
-            telegram_id: The user's Telegram ID.
-            text: The message text.
-            user_name: The user's name from Telegram profile (first_name).
-                       Saved to DB on first contact, used in every prompt.
+        - Returning user (name in DB): returns '[User: name]\\n'
+        - First-time user: saves name from Telegram, returns '' (triggers onboarding)
+        - No user_repo or failure: returns ''
         """
+        if self._user_repo is None:
+            return ""
+
+        try:
+            user = await self._user_repo.get_or_create(telegram_id)
+            set_context(RequestContext(user_id=user.id, telegram_id=telegram_id, language="en"))
+
+            if user.name:
+                return f"[User: {user.name}]\n"
+
+            if user_name:
+                try:
+                    await self._user_repo.update(replace(user, name=user_name))
+                except Exception:
+                    logger.warning("Failed to save user name for telegram_id=%d", telegram_id, exc_info=True)
+
+            return ""
+        except Exception:
+            logger.warning("Failed to resolve user_id for telegram_id=%d", telegram_id, exc_info=True)
+            return ""
+
+    async def process(
+        self,
+        telegram_id: int,
+        user_message: str,
+        user_name: str | None = None,
+        resources: list[Resource] | None = None,
+    ) -> str:
+        """Process a user message through the agentic loop and return the response."""
         collector = MetricsCollector()
         collector.start_request(telegram_id)
         callback_handler = MetricsCallbackHandler(collector)
 
-        # Resolve telegram_id -> user and set request context.
-        user_prefix = ""
-        if self._user_repo is not None:
-            try:
-                # Don't pass name to get_or_create — we check for first-time separately
-                user = await self._user_repo.get_or_create(telegram_id)
-                set_context(RequestContext(user_id=user.id, telegram_id=telegram_id, language="en"))
+        parts: list[str] = []
 
-                if user.name:
-                    # Returning user — include name prefix so LLM doesn't re-introduce
-                    user_prefix = f"[User: {user.name}]\n"
-                elif user_name:
-                    # First-time user with Telegram name — save it but DON'T add prefix
-                    # so the LLM does the full onboarding intro
-                    try:
-                        from dataclasses import replace
+        # User prefix
+        user_prefix = await self._resolve_user(telegram_id, user_name)
+        if user_prefix:
+            parts.append(user_prefix.strip())
 
-                        updated = replace(user, name=user_name)
-                        await self._user_repo.update(updated)
-                    except Exception:
-                        logger.warning("Failed to save user name for telegram_id=%d", telegram_id, exc_info=True)
-            except Exception:
-                logger.warning("Failed to resolve user_id for telegram_id=%d", telegram_id, exc_info=True)
+        # User message
+        if user_message:
+            parts.append(f"User says: {user_message}")
+
+        # Resources
+        if resources:
+            # Count by type
+            pdf_count = sum(1 for r in resources if r.mime_type == "application/pdf")
+            img_count = sum(1 for r in resources if r.mime_type.startswith("image/"))
+            audio_count = sum(1 for r in resources if r.mime_type.startswith("audio/"))
+
+            type_summary: list[str] = []
+            if pdf_count:
+                type_summary.append(f"{pdf_count} PDF document(s)")
+            if img_count:
+                type_summary.append(f"{img_count} image(s)")
+            if audio_count:
+                type_summary.append(f"{audio_count} audio file(s)")
+
+            parts.append(f"Attached resources: {', '.join(type_summary)}")
+
+            # Add each transcript labeled
+            for i, resource in enumerate(resources, 1):
+                parts.append(f"Resource {i} ({resource.mime_type}):\n{resource.transcript}")
+
+        full_message = "\n\n".join(parts)
 
         try:
             result = await self._agent.ainvoke(
-                {"messages": [HumanMessage(content=f"{user_prefix}{text}")]},
+                {"messages": [HumanMessage(content=full_message)]},
                 config={
                     "callbacks": [callback_handler],
                     "recursion_limit": self._max_iterations * 2,
@@ -103,9 +148,9 @@ class OrchestratorService:
             )
             messages = result.get("messages", [])
             if messages:
-                text = _extract_text_content(messages[-1].content)
-                if text.strip():
-                    return text
+                response_text = _extract_text_content(messages[-1].content)
+                if response_text.strip():
+                    return response_text
             return "I wasn't able to process that request."
         except Exception:
             logger.exception("Error processing message for telegram_id=%d", telegram_id)

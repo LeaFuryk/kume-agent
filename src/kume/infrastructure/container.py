@@ -29,10 +29,10 @@ from kume.adapters.tools import (
     AskRecommendationTool,
     FetchContextTool,
     LogMealTool,
+    ProcessLabReportTool,
     RequestReportTool,
     SaveGoalTool,
     SaveHealthContextTool,
-    SaveLabReportTool,
     SaveRestrictionTool,
     SaveUserNameTool,
 )
@@ -169,7 +169,7 @@ class Container:
             SaveGoalTool(goal_repo=self.goal_repo()),
             SaveRestrictionTool(restriction_repo=self.restriction_repo()),
             SaveHealthContextTool(doc_repo=self.doc_repo(), embedding_repo=self.embedding_repo()),
-            SaveLabReportTool(
+            ProcessLabReportTool(
                 llm=tool_llm,
                 doc_repo=self.doc_repo(),
                 marker_repo=self.marker_repo(),

@@ -79,7 +79,7 @@ def test_tools_returns_ten_tools(container: Container) -> None:
         "save_goal",
         "save_restriction",
         "save_health_context",
-        "save_lab_report",
+        "process_lab_report",
         "save_user_name",
     }
 
