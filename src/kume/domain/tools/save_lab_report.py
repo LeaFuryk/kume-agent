@@ -163,9 +163,12 @@ class LabReportProcessor:
             if new_markers:
                 await self._marker_repo.save_many(new_markers)
 
-            # Embed chunks
-            chunks = [text[i : i + 1000] for i in range(0, len(text), 1000)]
-            await self._embedder.embed_chunks(user_id, doc_id, chunks)
+            # Embed chunks (best-effort — don't fail the whole process if embedding fails)
+            try:
+                chunks = [text[i : i + 1000] for i in range(0, len(text), 1000)]
+                await self._embedder.embed_chunks(user_id, doc_id, chunks)
+            except Exception:
+                pass  # Embedding failure is non-fatal; markers are already saved
 
             all_new_markers.extend(new_markers)
 
@@ -192,25 +195,18 @@ class LabReportProcessor:
         if not current:
             return "No markers could be extracted from the lab report."
 
-        current_text = "\n".join(
-            f"- {m.name}: {m.value} {m.unit} (ref: {m.reference_range}) [{m.date.strftime('%Y-%m-%d')}]"
-            for m in current
-        )
+        current_text = "\n".join(_format_marker(m) for m in current)
 
         if comparative:
             # Multiple reports submitted at once
             comparison_instruction = _COMPARATIVE_INSTRUCTION
             if previous:
-                history_text = "\n".join(
-                    f"- {m.name}: {m.value} {m.unit} [{m.date.strftime('%Y-%m-%d')}]" for m in previous
-                )
+                history_text = "\n".join(_format_marker(m, short=True) for m in previous)
                 history_section = f"Previous markers (history):\n{history_text}"
             else:
                 history_section = "No previous lab results on file — these are the first reports."
         elif previous:
-            history_text = "\n".join(
-                f"- {m.name}: {m.value} {m.unit} [{m.date.strftime('%Y-%m-%d')}]" for m in previous
-            )
+            history_text = "\n".join(_format_marker(m, short=True) for m in previous)
             history_section = f"Previous markers (history):\n{history_text}"
             comparison_instruction = (
                 "Compare current vs previous results — identify trends "
@@ -230,6 +226,16 @@ class LabReportProcessor:
             system_prompt="You are a nutrition health analyst helping a user understand their lab results.",
             user_prompt=prompt,
         )
+
+
+def _format_marker(m: LabMarker, *, short: bool = False) -> str:
+    """Format a marker for display, handling empty unit/reference_range gracefully."""
+    unit_str = f" {m.unit}" if m.unit else ""
+    date_str = m.date.strftime("%Y-%m-%d") if m.date else "unknown"
+    if short:
+        return f"- {m.name}: {m.value}{unit_str} [{date_str}]"
+    ref_str = f" (ref: {m.reference_range})" if m.reference_range else ""
+    return f"- {m.name}: {m.value}{unit_str}{ref_str} [{date_str}]"
 
 
 def _extract_json(text: str) -> str:
