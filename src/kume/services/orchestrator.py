@@ -74,14 +74,17 @@ class OrchestratorService:
         if self._user_repo is not None:
             try:
                 user = await self._user_repo.get_or_create(telegram_id, name=user_name)
-                # Update name if Telegram profile changed and DB has no name yet
-                if user_name and not user.name:
-                    from dataclasses import replace
-
-                    updated = replace(user, name=user_name)
-                    await self._user_repo.update(updated)
-                    user = updated
                 set_context(RequestContext(user_id=user.id, telegram_id=telegram_id, language="en"))
+                # Best-effort: update name if Telegram profile changed and DB has no name yet
+                if user_name and not user.name:
+                    try:
+                        from dataclasses import replace
+
+                        updated = replace(user, name=user_name)
+                        await self._user_repo.update(updated)
+                        user = updated
+                    except Exception:
+                        logger.warning("Failed to update user name for telegram_id=%d", telegram_id, exc_info=True)
                 if user.name:
                     user_prefix = f"[User: {user.name}]\n"
             except Exception:

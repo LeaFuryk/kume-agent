@@ -4,7 +4,7 @@ import pytest
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from kume.adapters.input.message_batcher import MediaItem, MessageBatcher, PendingBatch
+from kume.adapters.input.message_batcher import BatchItem, MediaItem, MessageBatcher, PendingBatch
 from kume.adapters.input.status_messages import get_status_message
 from kume.adapters.input.telegram_bot import TelegramBotAdapter
 from kume.ports.output.messaging import MessagingPort
@@ -93,6 +93,7 @@ def _make_text_update(
     update.effective_user = MagicMock()
     update.effective_user.id = user_id
     update.effective_user.language_code = language_code
+    update.effective_user.first_name = "TestUser"
     update.effective_chat = MagicMock()
     update.effective_chat.id = chat_id
     return update
@@ -115,6 +116,7 @@ def _make_media_update(
     update.effective_user = MagicMock()
     update.effective_user.id = user_id
     update.effective_user.language_code = language_code
+    update.effective_user.first_name = "TestUser"
     update.message = MagicMock()
     update.message.document = document
     update.message.voice = voice
@@ -310,7 +312,7 @@ async def test_process_batch_single_text(
 ) -> None:
     """A batch with a single text message produces one orchestrator call."""
     batch = PendingBatch()
-    batch.texts = ["What should I eat?"]
+    batch.items = [BatchItem(type="text", text="What should I eat?")]
     batch.chat_id = 67890
     batch.language = "en"
 
@@ -331,7 +333,12 @@ async def test_process_batch_single_pdf(
 ) -> None:
     """A single PDF batch sends the reading_analysis status, then the response."""
     batch = PendingBatch()
-    batch.media = [MediaItem(raw_bytes=b"pdf-bytes", mime_type="application/pdf", caption="My labs")]
+    batch.items = [
+        BatchItem(
+            type="media",
+            media=MediaItem(raw_bytes=b"pdf-bytes", mime_type="application/pdf", caption="My labs"),
+        )
+    ]
     batch.chat_id = 67890
     batch.language = "en"
 
@@ -358,12 +365,21 @@ async def test_process_batch_multiple_pdfs_parallel(
     messaging: AsyncMock,
     ingestion: AsyncMock,
 ) -> None:
-    """Multiple PDFs are extracted in parallel and combined."""
+    """Multiple PDFs are extracted in order and combined."""
     batch = PendingBatch()
-    batch.media = [
-        MediaItem(raw_bytes=b"pdf1", mime_type="application/pdf", caption="Report 1"),
-        MediaItem(raw_bytes=b"pdf2", mime_type="application/pdf", caption="Report 2"),
-        MediaItem(raw_bytes=b"pdf3", mime_type="application/pdf", caption=""),
+    batch.items = [
+        BatchItem(
+            type="media",
+            media=MediaItem(raw_bytes=b"pdf1", mime_type="application/pdf", caption="Report 1"),
+        ),
+        BatchItem(
+            type="media",
+            media=MediaItem(raw_bytes=b"pdf2", mime_type="application/pdf", caption="Report 2"),
+        ),
+        BatchItem(
+            type="media",
+            media=MediaItem(raw_bytes=b"pdf3", mime_type="application/pdf", caption=""),
+        ),
     ]
     batch.chat_id = 67890
     batch.language = "es"
@@ -403,8 +419,13 @@ async def test_process_batch_mixed_text_and_pdf(
 ) -> None:
     """A batch with text + PDF produces one combined orchestrator call."""
     batch = PendingBatch()
-    batch.texts = ["Estos son mis análisis"]
-    batch.media = [MediaItem(raw_bytes=b"pdf-bytes", mime_type="application/pdf", caption="Lab results")]
+    batch.items = [
+        BatchItem(type="text", text="Estos son mis análisis"),
+        BatchItem(
+            type="media",
+            media=MediaItem(raw_bytes=b"pdf-bytes", mime_type="application/pdf", caption="Lab results"),
+        ),
+    ]
     batch.chat_id = 67890
     batch.language = "es"
 
@@ -435,7 +456,12 @@ async def test_process_batch_single_audio(
 ) -> None:
     """A single audio batch sends the transcribing status."""
     batch = PendingBatch()
-    batch.media = [MediaItem(raw_bytes=b"ogg-bytes", mime_type="audio/ogg", caption="")]
+    batch.items = [
+        BatchItem(
+            type="media",
+            media=MediaItem(raw_bytes=b"ogg-bytes", mime_type="audio/ogg", caption=""),
+        )
+    ]
     batch.chat_id = 67890
     batch.language = "en"
 
@@ -458,9 +484,14 @@ async def test_process_batch_unsupported_media(
     messaging: AsyncMock,
     ingestion: AsyncMock,
 ) -> None:
-    """Unsupported media type in batch sends error message."""
+    """Unsupported media type in batch is skipped; if all items are unsupported, error message is sent."""
     batch = PendingBatch()
-    batch.media = [MediaItem(raw_bytes=b"video", mime_type="video/mp4", caption="")]
+    batch.items = [
+        BatchItem(
+            type="media",
+            media=MediaItem(raw_bytes=b"video", mime_type="video/mp4", caption=""),
+        )
+    ]
     batch.chat_id = 67890
     batch.language = "en"
 
@@ -484,7 +515,7 @@ async def test_process_batch_error_handling(
 ) -> None:
     """Orchestrator errors are caught and a friendly message is sent."""
     batch = PendingBatch()
-    batch.texts = ["hello"]
+    batch.items = [BatchItem(type="text", text="hello")]
     batch.chat_id = 67890
     batch.language = "en"
 

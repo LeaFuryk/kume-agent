@@ -33,7 +33,9 @@ async def test_batch_fires_after_debounce_silence(
     on_batch_ready.assert_awaited_once()
     telegram_id, batch = on_batch_ready.call_args[0]
     assert telegram_id == 111
-    assert batch.texts == ["hello"]
+    assert len(batch.items) == 1
+    assert batch.items[0].type == "text"
+    assert batch.items[0].text == "hello"
     assert batch.chat_id == 999
     assert batch.language == "en"
 
@@ -52,7 +54,7 @@ async def test_timer_resets_on_new_message(
     await asyncio.sleep(0.1)  # now past 0.1s since last message
     on_batch_ready.assert_awaited_once()
     _, batch = on_batch_ready.call_args[0]
-    assert batch.texts == ["first", "second"]
+    assert [i.text for i in batch.items if i.type == "text"] == ["first", "second"]
 
 
 # ---- Accumulation ----
@@ -71,7 +73,7 @@ async def test_multiple_texts_combine_in_one_batch(
 
     on_batch_ready.assert_awaited_once()
     _, batch = on_batch_ready.call_args[0]
-    assert batch.texts == ["one", "two", "three"]
+    assert [i.text for i in batch.items if i.type == "text"] == ["one", "two", "three"]
 
 
 async def test_media_items_accumulate_in_batch(
@@ -89,9 +91,10 @@ async def test_media_items_accumulate_in_batch(
 
     on_batch_ready.assert_awaited_once()
     _, batch = on_batch_ready.call_args[0]
-    assert len(batch.media) == 2
-    assert batch.media[0].caption == "Report 1"
-    assert batch.media[1].caption == "Report 2"
+    media_items = [i.media for i in batch.items if i.type == "media"]
+    assert len(media_items) == 2
+    assert media_items[0].caption == "Report 1"
+    assert media_items[1].caption == "Report 2"
 
 
 async def test_text_and_media_combine_in_batch(
@@ -107,8 +110,10 @@ async def test_text_and_media_combine_in_batch(
 
     on_batch_ready.assert_awaited_once()
     _, batch = on_batch_ready.call_args[0]
-    assert batch.texts == ["Here are my results"]
-    assert len(batch.media) == 1
+    texts = [i.text for i in batch.items if i.type == "text"]
+    media = [i.media for i in batch.items if i.type == "media"]
+    assert texts == ["Here are my results"]
+    assert len(media) == 1
 
 
 # ---- User isolation ----
@@ -132,10 +137,10 @@ async def test_separate_users_get_separate_batches(
     for c in calls:
         tid, batch = c[0]
         if tid == 111:
-            assert batch.texts == ["user 1 msg"]
+            assert [i.text for i in batch.items if i.type == "text"] == ["user 1 msg"]
             assert batch.chat_id == 999
         else:
-            assert batch.texts == ["user 2 msg"]
+            assert [i.text for i in batch.items if i.type == "text"] == ["user 2 msg"]
             assert batch.chat_id == 888
 
 

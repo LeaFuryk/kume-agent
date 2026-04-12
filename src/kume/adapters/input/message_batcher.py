@@ -8,6 +8,8 @@ from typing import Any
 
 logger = logging.getLogger("kume.batcher")
 
+MAX_BATCH_BYTES = 50 * 1024 * 1024  # 50 MB total per user
+
 
 @dataclass
 class MediaItem:
@@ -18,15 +20,24 @@ class MediaItem:
     caption: str
 
 
+@dataclass
+class BatchItem:
+    """A single ordered item in a batch — either text or media."""
+
+    type: str  # "text" or "media"
+    text: str | None = None
+    media: MediaItem | None = None
+
+
 class PendingBatch:
     """Accumulates messages for one user within the debounce window."""
 
     def __init__(self) -> None:
-        self.texts: list[str] = []
-        self.media: list[MediaItem] = []
+        self.items: list[BatchItem] = []
         self.chat_id: int = 0
         self.language: str | None = None
         self.user_name: str | None = None
+        self.total_bytes: int = 0
 
 
 class MessageBatcher:
@@ -57,7 +68,7 @@ class MessageBatcher:
     ) -> None:
         """Add a text message and reset the debounce timer."""
         batch = self._get_or_create_batch(telegram_id, chat_id, language)
-        batch.texts.append(text)
+        batch.items.append(BatchItem(type="text", text=text))
         if user_name:
             batch.user_name = user_name
         self._reset_timer(telegram_id)
@@ -70,11 +81,23 @@ class MessageBatcher:
         language: str | None = None,
         user_name: str | None = None,
     ) -> None:
-        """Add a downloaded media item and reset the debounce timer."""
+        """Add a downloaded media item and reset the debounce timer.
+
+        Raises ValueError if adding this item would exceed the per-user
+        memory cap (MAX_BATCH_BYTES).
+        """
         batch = self._get_or_create_batch(telegram_id, chat_id, language)
+        item_bytes = len(item.raw_bytes)
+        if batch.total_bytes + item_bytes > MAX_BATCH_BYTES:
+            raise ValueError(
+                f"Batch memory cap exceeded: adding {item_bytes} bytes "
+                f"would exceed {MAX_BATCH_BYTES} byte limit "
+                f"(current: {batch.total_bytes} bytes)"
+            )
         if user_name:
             batch.user_name = user_name
-        batch.media.append(item)
+        batch.items.append(BatchItem(type="media", media=item))
+        batch.total_bytes += item_bytes
         self._reset_timer(telegram_id)
 
     # ------------------------------------------------------------------

@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 from telegram import Update
@@ -124,13 +123,14 @@ class TelegramBotAdapter:
         chat_id = batch.chat_id
         lang = batch.language
 
-        total_items = len(batch.texts) + len(batch.media)
+        total_items = len(batch.items)
         is_single_item = total_items == 1
 
         try:
             # Send appropriate status message
-            if is_single_item and len(batch.media) == 1:
-                media = batch.media[0]
+            if is_single_item and batch.items[0].type == "media":
+                media = batch.items[0].media
+                assert media is not None
                 if media.mime_type == "application/pdf":
                     await self._messaging.send_message(chat_id, get_status_message("reading_analysis", lang))
                 elif media.mime_type.startswith("audio/"):
@@ -141,57 +141,53 @@ class TelegramBotAdapter:
                 await self._messaging.send_message(chat_id, get_status_message("processing_batch", lang))
             # Single text message: no status needed
 
-            # Extract media content
+            # Process items in order, extracting media content inline
             parts: list[str] = []
+            pdf_counter = 0
+            # Count total PDFs to decide labelling
+            total_pdfs = sum(
+                1
+                for item in batch.items
+                if item.type == "media" and item.media and item.media.mime_type == "application/pdf"
+            )
+            skipped_items = 0
 
-            # Add user's text messages clearly labeled so the LLM mirrors their language
-            if batch.texts:
-                user_text = "\n".join(batch.texts)
-                parts.append(f"[User message]\n{user_text}")
+            for batch_item in batch.items:
+                if batch_item.type == "text" and batch_item.text is not None:
+                    parts.append(f"[User message]\n{batch_item.text}")
+                elif batch_item.type == "media" and batch_item.media is not None:
+                    media = batch_item.media
+                    assert self._ingestion is not None, "Ingestion required for media"
+                    try:
+                        extracted = await self._ingestion.process(media.raw_bytes, media.mime_type)
+                    except UnsupportedMediaType:
+                        logger.warning(
+                            "Skipping unsupported media type %s for telegram_id=%d",
+                            media.mime_type,
+                            telegram_id,
+                        )
+                        skipped_items += 1
+                        continue
 
-            # Separate PDFs (parallel) from audio (sequential) and other media
-            pdf_items: list[MediaItem] = []
-            audio_items: list[MediaItem] = []
-            other_items: list[MediaItem] = []
+                    if media.mime_type == "application/pdf":
+                        pdf_counter += 1
+                        label = f"[Document {pdf_counter}]" if total_pdfs > 1 else "[Document]"
+                        if media.caption:
+                            parts.append(f"{label} (caption: {media.caption})\n{extracted}")
+                        else:
+                            parts.append(f"{label}\n{extracted}")
+                    else:
+                        if media.caption:
+                            parts.append(media.caption)
+                        parts.append(extracted)
 
-            for media in batch.media:
-                if media.mime_type == "application/pdf":
-                    pdf_items.append(media)
-                elif media.mime_type.startswith("audio/"):
-                    audio_items.append(media)
-                else:
-                    other_items.append(media)
+            if not parts:
+                # All items were skipped (unsupported)
+                await self._messaging.send_message(chat_id, get_status_message("unsupported_media", lang))
+                return
 
-            assert self._ingestion is not None or not batch.media, "Ingestion required for media"
-
-            # Extract PDFs in parallel
-            pdf_results: list[str] = []
-            if pdf_items and self._ingestion:
-                pdf_tasks = [self._ingestion.process(m.raw_bytes, m.mime_type) for m in pdf_items]
-                pdf_results = list(await asyncio.gather(*pdf_tasks))
-
-            for i, (item, extracted) in enumerate(zip(pdf_items, pdf_results, strict=True), 1):
-                label = f"[Document {i}]" if len(pdf_items) > 1 else "[Document]"
-                if item.caption:
-                    parts.append(f"{label} (caption: {item.caption})\n{extracted}")
-                else:
-                    parts.append(f"{label}\n{extracted}")
-
-            # Process audio sequentially
-            for item in audio_items:
-                if self._ingestion:
-                    extracted = await self._ingestion.process(item.raw_bytes, item.mime_type)
-                    if item.caption:
-                        parts.append(item.caption)
-                    parts.append(extracted)
-
-            # Process other media (images, etc.)
-            for item in other_items:
-                if self._ingestion:
-                    extracted = await self._ingestion.process(item.raw_bytes, item.mime_type)
-                    if item.caption:
-                        parts.append(item.caption)
-                    parts.append(extracted)
+            if skipped_items:
+                parts.append(f"[{skipped_items} unsupported file(s) skipped]")
 
             combined = "\n\n".join(parts)
 
@@ -203,8 +199,6 @@ class TelegramBotAdapter:
             response = await self._orchestrator.process(telegram_id, combined, user_name=batch.user_name)
             await self._messaging.send_message(chat_id, response)
 
-        except UnsupportedMediaType:
-            await self._messaging.send_message(chat_id, get_status_message("unsupported_media", lang))
         except Exception:
             logger.exception("Error processing batch for telegram_id=%d", telegram_id)
             await self._messaging.send_message(chat_id, "Sorry, something went wrong. Please try again.")
