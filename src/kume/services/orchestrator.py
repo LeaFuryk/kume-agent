@@ -2,15 +2,24 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import BaseTool
 
+from kume.domain.conversation import ConversationEvent
+from kume.infrastructure.image_store import ImageStore
 from kume.infrastructure.metrics import MetricsCallbackHandler, MetricsCollector
-from kume.infrastructure.request_context import RequestContext, set_context
+from kume.infrastructure.request_context import (
+    RequestContext,
+    get_context as get_request_context,
+    set_context,
+)
+from kume.infrastructure.session_store import SessionStore
 from kume.ports.output.repositories import UserRepository
 from kume.services.prompts import SYSTEM_PROMPT
 
@@ -54,10 +63,14 @@ class OrchestratorService:
         system_prompt: str = SYSTEM_PROMPT,
         max_iterations: int = 5,
         user_repo: UserRepository | None = None,
+        session_store: SessionStore | None = None,
+        image_store: ImageStore | None = None,
     ) -> None:
         self._max_iterations = max_iterations
         self._tools = tools
         self._user_repo = user_repo
+        self._session_store = session_store
+        self._image_store = image_store
         self._agent = create_agent(
             model=llm,
             tools=tools,
@@ -111,6 +124,27 @@ class OrchestratorService:
         if user_prefix:
             parts.append(user_prefix.strip())
 
+        # Resolve user_id from RequestContext (set by _resolve_user)
+        req_ctx = get_request_context()
+        user_id = req_ctx.user_id if req_ctx else ""
+
+        # Load conversation history from SessionStore
+        history_messages: list[HumanMessage | AIMessage] = []
+        if self._session_store and user_id:
+            session = self._session_store.get_session(user_id)
+            for event in session:
+                if event.role == "user":
+                    history_messages.append(HumanMessage(content=event.content))
+                else:
+                    history_messages.append(AIMessage(content=event.content))
+
+        # Store image bytes in ImageStore for tools to access
+        request_id = str(uuid4())
+        if self._image_store and resources:
+            image_bytes_list = [r.raw_bytes for r in resources if r.raw_bytes and r.mime_type.startswith("image/")]
+            if image_bytes_list:
+                self._image_store.set_images(request_id, image_bytes_list)
+
         # User message
         if user_message:
             parts.append(f"User says: {user_message}")
@@ -138,22 +172,50 @@ class OrchestratorService:
 
         full_message = "\n\n".join(parts)
 
+        # Build messages with history + current message
+        messages = history_messages + [HumanMessage(content=full_message)]
+
         try:
             result = await self._agent.ainvoke(
-                {"messages": [HumanMessage(content=full_message)]},
+                {"messages": messages},
                 config={
                     "callbacks": [callback_handler],
                     "recursion_limit": self._max_iterations * 2,
                 },
             )
-            messages = result.get("messages", [])
-            if messages:
-                response_text = _extract_text_content(messages[-1].content)
+            resp_messages = result.get("messages", [])
+            if resp_messages:
+                response_text = _extract_text_content(resp_messages[-1].content)
                 if response_text.strip():
+                    # Save conversation events to SessionStore
+                    if self._session_store and user_id:
+                        now = datetime.now(UTC)
+                        self._session_store.add(
+                            user_id,
+                            ConversationEvent(
+                                id=str(uuid4()),
+                                user_id=user_id,
+                                role="user",
+                                content=full_message,
+                                created_at=now,
+                            ),
+                        )
+                        self._session_store.add(
+                            user_id,
+                            ConversationEvent(
+                                id=str(uuid4()),
+                                user_id=user_id,
+                                role="assistant",
+                                content=response_text,
+                                created_at=now,
+                            ),
+                        )
                     return response_text
             return "I wasn't able to process that request."
         except Exception:
             logger.exception("Error processing message for telegram_id=%d", telegram_id)
             return "Sorry, something went wrong. Please try again."
         finally:
+            if self._image_store:
+                self._image_store.clear(request_id)
             collector.end_request()
