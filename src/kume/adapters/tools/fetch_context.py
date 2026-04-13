@@ -27,10 +27,9 @@ class FetchContextTool(BaseTool):
 
     name: str = "fetch_user_context"
     description: str = (
-        "Retrieve the user's saved health context: goals, dietary restrictions, "
-        "lab results, and health documents. Use this to answer questions about "
-        "their data — comparing lab results, checking progress, reviewing goals, "
-        "or anything that needs their saved health information."
+        "Retrieve the user's saved health data (goals, restrictions, lab results, documents). "
+        "Call BEFORE answering questions about their data. "
+        "Example: 'what were my triglycerides?' → fetch_user_context(query='triglyceride results')"
     )
     args_schema: type[BaseModel] = FetchContextInput
     context_builder: ContextBuilder = Field(exclude=True)

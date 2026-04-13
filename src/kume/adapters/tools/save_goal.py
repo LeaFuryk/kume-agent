@@ -30,7 +30,10 @@ class SaveGoalTool(BaseTool):
     """
 
     name: str = "save_goal"
-    description: str = "Save a nutrition or health goal for the user (e.g., 'lose 5kg', 'eat more protein')"
+    description: str = (
+        "Save a health or nutrition goal. Call BEFORE responding when user expresses ANY intention. "
+        "Example: 'I want to lower my triglycerides' → save_goal(description='Lower triglycerides')"
+    )
     args_schema: type[BaseModel] = SaveGoalInput
     goal_repo: GoalRepository = Field(exclude=True)
 

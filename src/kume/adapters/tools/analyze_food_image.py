@@ -50,9 +50,8 @@ class AnalyzeFoodImageTool(BaseTool):
 
     name: str = "analyze_food_image"
     description: str = (
-        "Analyze a food photo for detailed nutritional content including calories, "
-        "protein, carbs, fat, fiber, sodium, sugar, saturated fat, and cholesterol. "
-        "Returns a nutritional breakdown with confidence score and health alignment."
+        "Analyze a food photo for detailed nutritional breakdown (calories, protein, carbs, fat, etc.). "
+        "Example: user sends food photo → analyze_food_image(description='what is this?', image_index=1)"
     )
     args_schema: type[BaseModel] = AnalyzeFoodImageInput
     vision: VisionPort = Field(exclude=True)

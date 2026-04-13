@@ -34,11 +34,9 @@ class ProcessLabReportTool(BaseTool):
 
     name: str = "process_lab_report"
     description: str = (
-        "Analyze NEW lab report data that the user just sent. Extracts markers, "
-        "compares with previous results if available, and returns a clinical analysis "
-        "with trends and recommendations. Pass each document's text as a separate "
-        "item in the texts list. Use this ONLY for new lab data — for questions "
-        "about existing saved results, use fetch_user_context instead."
+        "Process NEW lab report PDFs: extract markers, compare with previous results, return analysis. "
+        "Pass each document as a separate item. "
+        "Example: 3 PDFs → process_lab_report(texts=['transcript1', 'transcript2', 'transcript3'])"
     )
     args_schema: type[BaseModel] = ProcessLabReportInput
     llm: LLMPort = Field(exclude=True)
