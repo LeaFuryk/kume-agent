@@ -31,6 +31,7 @@ from kume.adapters.tools import (
     AnalyzeFoodTool,
     AskRecommendationTool,
     FetchContextTool,
+    FetchLabResultsTool,
     LogMealTool,
     ProcessLabReportTool,
     RequestReportTool,
@@ -235,6 +236,7 @@ class Container:
             ),
             SaveUserNameTool(user_repo=self.user_repo()),
             FetchContextTool(context_builder=cb),
+            FetchLabResultsTool(marker_repo=self.marker_repo()),
         ]
 
     def orchestrator_service(self) -> OrchestratorService:

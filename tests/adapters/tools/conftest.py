@@ -118,7 +118,10 @@ class FakeLabMarkerRepository(LabMarkerRepository):
         name: str | None = None,
         since: datetime | None = None,
     ) -> list[LabMarker]:
-        return [m for batch in self.saved_markers for m in batch]
+        all_markers = [m for batch in self.saved_markers for m in batch if m.user_id == user_id]
+        if name:
+            all_markers = [m for m in all_markers if name.lower() in m.name.lower()]
+        return all_markers
 
 
 class FakeVisionPort(VisionPort):
