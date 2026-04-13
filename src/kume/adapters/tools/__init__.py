@@ -2,6 +2,7 @@ from kume.adapters.tools.analyze_food import AnalyzeFoodTool
 from kume.adapters.tools.analyze_food_image import AnalyzeFoodImageTool
 from kume.adapters.tools.ask_recommendation import AskRecommendationTool
 from kume.adapters.tools.fetch_context import FetchContextTool
+from kume.adapters.tools.fetch_lab_results import FetchLabResultsTool
 from kume.adapters.tools.log_meal import LogMealTool
 from kume.adapters.tools.process_lab_report import ProcessLabReportTool
 from kume.adapters.tools.save_goal import SaveGoalTool
@@ -15,6 +16,7 @@ __all__ = [
     "AnalyzeFoodTool",
     "AskRecommendationTool",
     "FetchContextTool",
+    "FetchLabResultsTool",
     "LogMealTool",
     "RequestReportTool",
     "SaveGoalTool",
