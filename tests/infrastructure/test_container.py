@@ -46,7 +46,10 @@ class _FakeEmbeddingRepository(EmbeddingRepository):
 @pytest.fixture
 def container(settings: Settings) -> Container:
     """Container with PGVector mocked out so tests don't need a real database."""
-    with patch.object(Container, "embedding_repo", return_value=_FakeEmbeddingRepository()):
+    with patch(
+        "kume.infrastructure.container.PGVectorEmbeddingRepository",
+        return_value=_FakeEmbeddingRepository(),
+    ):
         yield Container(settings)
 
 
@@ -191,3 +194,34 @@ def test_analyze_food_image_tool_in_tools(container: Container) -> None:
     tools = container.tools()
     names = {t.name for t in tools}
     assert "analyze_food_image" in names
+
+
+# --- Repo singleton tests ---
+
+
+def test_user_repo_is_singleton(container: Container) -> None:
+    assert container.user_repo() is container.user_repo()
+
+
+def test_goal_repo_is_singleton(container: Container) -> None:
+    assert container.goal_repo() is container.goal_repo()
+
+
+def test_restriction_repo_is_singleton(container: Container) -> None:
+    assert container.restriction_repo() is container.restriction_repo()
+
+
+def test_doc_repo_is_singleton(container: Container) -> None:
+    assert container.doc_repo() is container.doc_repo()
+
+
+def test_marker_repo_is_singleton(container: Container) -> None:
+    assert container.marker_repo() is container.marker_repo()
+
+
+def test_meal_repo_is_singleton(container: Container) -> None:
+    assert container.meal_repo() is container.meal_repo()
+
+
+def test_embedding_repo_is_singleton(container: Container) -> None:
+    assert container.embedding_repo() is container.embedding_repo()

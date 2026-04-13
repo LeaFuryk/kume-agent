@@ -103,33 +103,45 @@ class Container:
         self._session_factory = create_session_factory(settings.database_url)
         self._session_store = SessionStore()
         self._image_store = ImageStore()
+        # Cache repo instances as singletons
+        self._user_repo = PostgresUserRepository(self._session_factory)
+        self._goal_repo = PostgresGoalRepository(self._session_factory)
+        self._restriction_repo = PostgresRestrictionRepository(self._session_factory)
+        self._doc_repo = PostgresDocumentRepository(self._session_factory)
+        self._marker_repo = PostgresLabMarkerRepository(self._session_factory)
+        self._meal_repo = PostgresMealRepository(self._session_factory)
+        # embedding_repo is lazy — PGVector opens a sync DB connection on init,
+        # which fails in environments without PostgreSQL (CI, tests).
+        self._embedding_repo: EmbeddingRepository | None = None
 
     # --- Repositories ---
 
     def user_repo(self) -> UserRepository:
-        return PostgresUserRepository(self._session_factory)
+        return self._user_repo
 
     def goal_repo(self) -> GoalRepository:
-        return PostgresGoalRepository(self._session_factory)
+        return self._goal_repo
 
     def restriction_repo(self) -> RestrictionRepository:
-        return PostgresRestrictionRepository(self._session_factory)
+        return self._restriction_repo
 
     def doc_repo(self) -> DocumentRepository:
-        return PostgresDocumentRepository(self._session_factory)
+        return self._doc_repo
 
     def marker_repo(self) -> LabMarkerRepository:
-        return PostgresLabMarkerRepository(self._session_factory)
+        return self._marker_repo
 
     def meal_repo(self) -> MealRepository:
-        return PostgresMealRepository(self._session_factory)
+        return self._meal_repo
 
     def embedding_repo(self) -> EmbeddingRepository:
-        return PGVectorEmbeddingRepository(
-            database_url=self._settings.database_url,
-            openai_api_key=self._settings.openai_api_key,
-            embedding_model=self._settings.openai_embedding_model,
-        )
+        if self._embedding_repo is None:
+            self._embedding_repo = PGVectorEmbeddingRepository(
+                database_url=self._settings.database_url,
+                openai_api_key=self._settings.openai_api_key,
+                embedding_model=self._settings.openai_embedding_model,
+            )
+        return self._embedding_repo
 
     # --- LLM ---
 
