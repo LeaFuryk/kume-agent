@@ -12,6 +12,7 @@ from kume.ports.output.repositories import (
     RestrictionRepository,
     UserRepository,
 )
+from kume.ports.output.vision import VisionPort
 
 
 class FakeLLMPort(LLMPort):
@@ -117,3 +118,26 @@ class FakeLabMarkerRepository(LabMarkerRepository):
         since: datetime | None = None,
     ) -> list[LabMarker]:
         return [m for batch in self.saved_markers for m in batch]
+
+
+class FakeVisionPort(VisionPort):
+    """A minimal VisionPort implementation for testing."""
+
+    def __init__(self, response_text: str = "fake vision response") -> None:
+        self.response_text = response_text
+        self.last_call: dict[str, object] | None = None
+
+    async def analyze_image(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        image_bytes: bytes,
+        mime_type: str,
+    ) -> str:
+        self.last_call = {
+            "system_prompt": system_prompt,
+            "user_prompt": user_prompt,
+            "image_bytes": image_bytes,
+            "mime_type": mime_type,
+        }
+        return self.response_text
