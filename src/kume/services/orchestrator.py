@@ -152,11 +152,10 @@ class OrchestratorService:
         if self._image_store and resources:
             image_resources = [r for r in resources if r.raw_bytes and r.mime_type.startswith("image/")]
             if image_resources:
-                self._image_store.set_images(
-                    request_id,
-                    [r.raw_bytes for r in image_resources],
-                    [r.mime_type for r in image_resources],
-                )
+                image_bytes = [r.raw_bytes for r in image_resources if r.raw_bytes is not None]
+                image_mimes = [r.mime_type for r in image_resources]
+                if image_bytes:
+                    self._image_store.set_images(request_id, image_bytes, image_mimes)
 
         # User message (labeled to match prompt's language detection instructions)
         if user_message:
@@ -197,13 +196,12 @@ class OrchestratorService:
         reasoning_handler.log_user_message(user_message or "(no text)", user_name)
 
         try:
-            result = await self._agent.ainvoke(
-                {"messages": messages},
-                config={
-                    "callbacks": [callback_handler, reasoning_handler],
-                    "recursion_limit": self._max_iterations * 2,
-                },
-            )
+            agent_input: dict[str, Any] = {"messages": messages}
+            agent_config: dict[str, Any] = {
+                "callbacks": [callback_handler, reasoning_handler],
+                "recursion_limit": self._max_iterations * 2,
+            }
+            result = await self._agent.ainvoke(agent_input, config=agent_config)  # type: ignore[call-overload]
             resp_messages = result.get("messages", [])
             if resp_messages:
                 response_text = _extract_text_content(resp_messages[-1].content)
