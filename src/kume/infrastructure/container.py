@@ -178,6 +178,7 @@ class Container:
             "audio/mp4": AudioProcessor(stt=whisper),
             "image/jpeg": ImageProcessor(),
             "image/png": ImageProcessor(),
+            "image/webp": ImageProcessor(),
         }
         return IngestionService(processors=processors)
 

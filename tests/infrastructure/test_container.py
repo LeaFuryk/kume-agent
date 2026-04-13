@@ -117,7 +117,7 @@ def test_ingestion_service_returns_ingestion_service(container: Container) -> No
     service = container.ingestion_service()
     assert isinstance(service, IngestionService)
     # Verify all expected mime types are registered
-    expected_mimes = {"application/pdf", "audio/ogg", "audio/mpeg", "audio/mp4", "image/jpeg", "image/png"}
+    expected_mimes = {"application/pdf", "audio/ogg", "audio/mpeg", "audio/mp4", "image/jpeg", "image/png", "image/webp"}
     assert set(service._processors.keys()) == expected_mimes
 
 
