@@ -41,8 +41,40 @@ class LogMealTool(BaseTool):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    def _run(self, **kwargs) -> str:
-        return asyncio.get_event_loop().run_until_complete(self._arun(**kwargs))
+    def _run(
+        self,
+        description: str = "",
+        calories: float = 0.0,
+        protein_g: float = 0.0,
+        carbs_g: float = 0.0,
+        fat_g: float = 0.0,
+        fiber_g: float = 0.0,
+        sodium_mg: float = 0.0,
+        sugar_g: float = 0.0,
+        saturated_fat_g: float = 0.0,
+        cholesterol_mg: float = 0.0,
+        confidence: float = 0.8,
+        image_present: bool = False,
+        logged_at: str | None = None,
+    ) -> str:
+        """Sync fallback — required by LangChain's BaseTool contract."""
+        return asyncio.get_event_loop().run_until_complete(
+            self._arun(
+                description=description,
+                calories=calories,
+                protein_g=protein_g,
+                carbs_g=carbs_g,
+                fat_g=fat_g,
+                fiber_g=fiber_g,
+                sodium_mg=sodium_mg,
+                sugar_g=sugar_g,
+                saturated_fat_g=saturated_fat_g,
+                cholesterol_mg=cholesterol_mg,
+                confidence=confidence,
+                image_present=image_present,
+                logged_at=logged_at,
+            )
+        )
 
     async def _arun(
         self,
