@@ -325,6 +325,7 @@ async def test_process_batch_single_text(
         user_message="What should I eat?",
         user_name=None,
         resources=None,
+        language="en",
     )
     # Single text: no status message, just the response
     messaging.send_message.assert_awaited_once_with(67890, "Eat more vegetables!")

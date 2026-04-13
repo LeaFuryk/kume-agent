@@ -57,7 +57,9 @@ class TelegramBotAdapter:
             await self._batcher.add_text(telegram_id, chat_id, text, lang, user_name=user_name)
         else:
             logger.info("Received message from telegram_id=%d", telegram_id)
-            response = await self._orchestrator.process(telegram_id, user_message=text, user_name=user_name)
+            response = await self._orchestrator.process(
+                telegram_id, user_message=text, user_name=user_name, language=lang
+            )
             await self._messaging.send_message(chat_id, response)
 
     async def handle_media(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -203,6 +205,7 @@ class TelegramBotAdapter:
                 user_message=user_message,
                 user_name=batch.user_name,
                 resources=resources if resources else None,
+                language=lang,
             )
             await self._messaging.send_message(chat_id, response)
 
@@ -254,6 +257,7 @@ class TelegramBotAdapter:
                 user_message=user_message,
                 user_name=user_name,
                 resources=[resource],
+                language=lang,
             )
             await self._messaging.send_message(chat_id, response)
         except Exception:

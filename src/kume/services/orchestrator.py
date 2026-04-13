@@ -79,7 +79,7 @@ class OrchestratorService:
             system_prompt=system_prompt,
         )
 
-    async def _resolve_user(self, telegram_id: int, user_name: str | None = None) -> str:
+    async def _resolve_user(self, telegram_id: int, user_name: str | None = None, language: str | None = None) -> str:
         """Resolve telegram_id to internal user, set request context, return message prefix.
 
         - Returning user (name in DB): returns '[User: name]\\n'
@@ -91,7 +91,7 @@ class OrchestratorService:
 
         try:
             user = await self._user_repo.get_or_create(telegram_id)
-            set_context(RequestContext(user_id=user.id, telegram_id=telegram_id, language="en"))
+            set_context(RequestContext(user_id=user.id, telegram_id=telegram_id, language=language or "en"))
 
             if user.name:
                 return f"[User: {user.name}]\n"
@@ -113,6 +113,7 @@ class OrchestratorService:
         user_message: str,
         user_name: str | None = None,
         resources: list[Resource] | None = None,
+        language: str | None = None,
     ) -> str:
         """Process a user message through the agentic loop and return the response."""
         collector = MetricsCollector()
@@ -122,8 +123,21 @@ class OrchestratorService:
 
         parts: list[str] = []
 
+        # Language instruction — tell the LLM which language to respond in
+        if language:
+            lang_names = {
+                "es": "Spanish",
+                "en": "English",
+                "pt": "Portuguese",
+                "fr": "French",
+                "de": "German",
+                "it": "Italian",
+            }
+            lang_name = lang_names.get(language[:2], language)
+            parts.append(f"[Respond in: {lang_name}]")
+
         # User prefix
-        user_prefix = await self._resolve_user(telegram_id, user_name)
+        user_prefix = await self._resolve_user(telegram_id, user_name, language=language)
         if user_prefix:
             parts.append(user_prefix.strip())
 
