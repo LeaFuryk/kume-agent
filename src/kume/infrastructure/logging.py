@@ -44,9 +44,12 @@ class PrettyFormatter(logging.Formatter):
     def _format_metrics(self, metrics: dict) -> str:  # type: ignore[type-arg]
         rid = metrics.get("request_id", "????")[:8]
         tid = metrics.get("telegram_id", "?")
-        lines = [
-            f"\u2500\u2500 Request {rid} \u2500\u2500 telegram_id={tid} \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
-        ]
+        user_name = metrics.get("user_name")
+        header = f"\u2500\u2500 Request {rid} \u2500\u2500 telegram_id={tid}"
+        if user_name:
+            header += f" ({user_name})"
+        header += " " + "\u2500" * max(1, 55 - len(header))
+        lines = [header]
 
         for call in metrics.get("llm_calls", []):
             model = call.get("model", "?")
@@ -81,6 +84,13 @@ class PrettyFormatter(logging.Formatter):
         return "\n".join(lines)
 
 
+class ReasoningFormatter(logging.Formatter):
+    """Minimal formatter for the reasoning chain — just the message, no timestamp."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        return record.getMessage()
+
+
 def setup_logging(level: str = "INFO", log_format: str = "pretty") -> None:
     """Configure the kume logger with the chosen format to stdout.
 
@@ -96,3 +106,15 @@ def setup_logging(level: str = "INFO", log_format: str = "pretty") -> None:
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
     root.addHandler(handler)
     root.propagate = False
+
+    # Reasoning logger — clean output without timestamps for dev readability
+    reasoning = logging.getLogger("kume.reasoning")
+    reasoning.handlers.clear()
+    reasoning_handler = logging.StreamHandler(sys.stdout)
+    if log_format == "json":
+        reasoning_handler.setFormatter(JSONFormatter())
+    else:
+        reasoning_handler.setFormatter(ReasoningFormatter())
+    reasoning.addHandler(reasoning_handler)
+    reasoning.setLevel(getattr(logging, level.upper(), logging.INFO))
+    reasoning.propagate = False

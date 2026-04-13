@@ -63,3 +63,36 @@ class TestMultipleRequests:
         store.clear("req-1")
         assert store.get_image("req-1", 1) is None
         assert store.get_image("req-2", 1) == b"img-b"
+
+
+class TestCurrentRequestId:
+    def test_set_images_updates_current_request_id(self) -> None:
+        store = ImageStore()
+        store.set_images("req-1", [b"img"])
+        assert store.current_request_id == "req-1"
+
+    def test_latest_set_images_wins(self) -> None:
+        store = ImageStore()
+        store.set_images("req-1", [b"a"])
+        store.set_images("req-2", [b"b"])
+        assert store.current_request_id == "req-2"
+
+    def test_default_is_empty_string(self) -> None:
+        store = ImageStore()
+        assert store.current_request_id == ""
+
+
+class TestMimeTypes:
+    def test_stores_and_retrieves_mime_type(self) -> None:
+        store = ImageStore()
+        store.set_images("req-1", [b"img"], ["image/png"])
+        assert store.get_mime_type("req-1", 1) == "image/png"
+
+    def test_defaults_to_jpeg(self) -> None:
+        store = ImageStore()
+        store.set_images("req-1", [b"img"])
+        assert store.get_mime_type("req-1", 1) == "image/jpeg"
+
+    def test_unknown_returns_jpeg(self) -> None:
+        store = ImageStore()
+        assert store.get_mime_type("unknown", 1) == "image/jpeg"

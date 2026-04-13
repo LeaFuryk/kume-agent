@@ -24,6 +24,7 @@ def settings() -> Settings:
         openai_api_key="fake-key",
         orchestrator_model="gpt-4o",
         tool_model="gpt-4o-mini",
+        vision_model="gpt-4o",
         max_agent_iterations=5,
         log_level="INFO",
         database_url="postgresql+asyncpg://kume:kume@localhost:5432/kume",
@@ -116,7 +117,15 @@ def test_ingestion_service_returns_ingestion_service(container: Container) -> No
     service = container.ingestion_service()
     assert isinstance(service, IngestionService)
     # Verify all expected mime types are registered
-    expected_mimes = {"application/pdf", "audio/ogg", "audio/mpeg", "audio/mp4", "image/jpeg", "image/png"}
+    expected_mimes = {
+        "application/pdf",
+        "audio/ogg",
+        "audio/mpeg",
+        "audio/mp4",
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+    }
     assert set(service._processors.keys()) == expected_mimes
 
 

@@ -58,7 +58,6 @@ class AnalyzeFoodImageTool(BaseTool):
     vision: VisionPort = Field(exclude=True)
     context_builder: ContextBuilder | None = Field(default=None, exclude=True)
     image_store: ImageStore = Field(exclude=True)
-    request_id_key: str = Field(default="", exclude=True)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -70,10 +69,13 @@ class AnalyzeFoodImageTool(BaseTool):
         if not ctx:
             return "Error: user context not set. Cannot analyze food image."
 
-        # Get image bytes
-        image_bytes = self.image_store.get_image(self.request_id_key, image_index)
+        # Get image bytes using the current request_id from ImageStore contextvar
+        request_id = self.image_store.current_request_id
+        image_bytes = self.image_store.get_image(request_id, image_index)
         if image_bytes is None:
             return f"Error: no image found at index {image_index}."
+
+        mime_type = self.image_store.get_mime_type(request_id, image_index)
 
         # Build user context
         context = ""
@@ -85,9 +87,13 @@ class AnalyzeFoodImageTool(BaseTool):
 
         prompt = NUTRITION_PROMPT.format(context=context, description=description)
 
-        return await self.vision.analyze_image(
-            system_prompt="You are a nutrition expert analyzing food images.",
-            user_prompt=prompt,
-            image_bytes=image_bytes,
-            mime_type="image/jpeg",
-        )
+        try:
+            return await self.vision.analyze_image(
+                system_prompt="You are a nutrition expert analyzing food images.",
+                user_prompt=prompt,
+                image_bytes=image_bytes,
+                mime_type=mime_type,
+            )
+        except Exception:
+            logger.exception("Vision API call failed")
+            return "Sorry, I couldn't analyze the image right now. Please try again."

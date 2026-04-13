@@ -13,7 +13,7 @@ from langchain_core.tools import BaseTool
 
 from kume.domain.conversation import ConversationEvent
 from kume.infrastructure.image_store import ImageStore
-from kume.infrastructure.metrics import MetricsCallbackHandler, MetricsCollector
+from kume.infrastructure.metrics import MetricsCallbackHandler, MetricsCollector, ReasoningCallbackHandler
 from kume.infrastructure.request_context import (
     RequestContext,
     set_context,
@@ -116,8 +116,9 @@ class OrchestratorService:
     ) -> str:
         """Process a user message through the agentic loop and return the response."""
         collector = MetricsCollector()
-        collector.start_request(telegram_id)
+        collector.start_request(telegram_id, user_name=user_name)
         callback_handler = MetricsCallbackHandler(collector)
+        reasoning_handler = ReasoningCallbackHandler(user_name=user_name)
 
         parts: list[str] = []
 
@@ -130,9 +131,15 @@ class OrchestratorService:
         req_ctx = get_request_context()
         user_id = req_ctx.user_id if req_ctx else ""
 
-        # Load conversation history from SessionStore
+        # Load conversation history from SessionStore (under per-user lock
+        # to prevent race conditions on overlapping requests)
         history_messages: list[HumanMessage | AIMessage] = []
+        session_lock = None
+        lock_acquired = False
         if self._session_store and user_id:
+            session_lock = self._session_store._get_lock(user_id)
+            await session_lock.acquire()
+            lock_acquired = True
             session = self._session_store.get_session(user_id)
             for event in session:
                 if event.role == "user":
@@ -140,16 +147,19 @@ class OrchestratorService:
                 else:
                     history_messages.append(AIMessage(content=event.content))
 
-        # Store image bytes in ImageStore for tools to access
+        # Store image bytes + MIME types in ImageStore for tools to access
         request_id = str(uuid4())
         if self._image_store and resources:
-            image_bytes_list = [r.raw_bytes for r in resources if r.raw_bytes and r.mime_type.startswith("image/")]
-            if image_bytes_list:
-                self._image_store.set_images(request_id, image_bytes_list)
+            image_resources = [r for r in resources if r.raw_bytes and r.mime_type.startswith("image/")]
+            if image_resources:
+                image_bytes = [r.raw_bytes for r in image_resources if r.raw_bytes is not None]
+                image_mimes = [r.mime_type for r in image_resources]
+                if image_bytes:
+                    self._image_store.set_images(request_id, image_bytes, image_mimes)
 
-        # User message
+        # User message (labeled to match prompt's language detection instructions)
         if user_message:
-            parts.append(f"User says: {user_message}")
+            parts.append(f"[User message]: {user_message}")
 
         # Resources
         if resources:
@@ -168,37 +178,51 @@ class OrchestratorService:
 
             parts.append(f"Attached resources: {', '.join(type_summary)}")
 
-            # Add each transcript labeled
-            for i, resource in enumerate(resources, 1):
-                parts.append(f"Resource {i} ({resource.mime_type}):\n{resource.transcript}")
+            # Add each transcript labeled, with image-specific indices for analyze_food_image
+            image_idx = 0
+            for resource in resources:
+                if resource.mime_type.startswith("image/"):
+                    image_idx += 1
+                    parts.append(f"Image {image_idx} ({resource.mime_type}):\n{resource.transcript}")
+                else:
+                    parts.append(f"Document ({resource.mime_type}):\n{resource.transcript}")
 
         full_message = "\n\n".join(parts)
 
         # Build messages with history + current message
         messages = history_messages + [HumanMessage(content=full_message)]
 
+        # Log user message for reasoning chain
+        reasoning_handler.log_user_message(user_message or "(no text)", user_name)
+
         try:
-            result = await self._agent.ainvoke(
-                {"messages": messages},
-                config={
-                    "callbacks": [callback_handler],
-                    "recursion_limit": self._max_iterations * 2,
-                },
-            )
+            agent_input: dict[str, Any] = {"messages": messages}
+            agent_config: dict[str, Any] = {
+                "callbacks": [callback_handler, reasoning_handler],
+                "recursion_limit": self._max_iterations * 2,
+            }
+            result = await self._agent.ainvoke(agent_input, config=agent_config)  # type: ignore[call-overload]
             resp_messages = result.get("messages", [])
             if resp_messages:
                 response_text = _extract_text_content(resp_messages[-1].content)
                 if response_text.strip():
+                    reasoning_handler.log_response(response_text)
                     # Save conversation events to SessionStore
+                    # Use a compact summary for session history to avoid replaying
+                    # full resource transcripts (PDFs, OCR) on subsequent turns.
                     if self._session_store and user_id:
                         now = datetime.now(UTC)
+                        history_content = user_message or ""
+                        if resources:
+                            resource_types = [r.mime_type for r in resources]
+                            history_content += f" [+ {len(resources)} attachment(s): {', '.join(resource_types)}]"
                         self._session_store.add(
                             user_id,
                             ConversationEvent(
                                 id=str(uuid4()),
                                 user_id=user_id,
                                 role="user",
-                                content=full_message,
+                                content=history_content.strip(),
                                 created_at=now,
                             ),
                         )
@@ -218,6 +242,9 @@ class OrchestratorService:
             logger.exception("Error processing message for telegram_id=%d", telegram_id)
             return "Sorry, something went wrong. Please try again."
         finally:
+            if session_lock and lock_acquired:
+                session_lock.release()
             if self._image_store:
                 self._image_store.clear(request_id)
+            set_context(None)  # type: ignore[arg-type]  # clear stale user context
             collector.end_request()

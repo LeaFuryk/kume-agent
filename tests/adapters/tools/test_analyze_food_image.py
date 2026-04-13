@@ -11,10 +11,14 @@ from kume.infrastructure.request_context import RequestContext, set_context
 from tests.adapters.tools.conftest import FakeVisionPort
 
 
-def _make_image_store(request_id: str = "req-1", images: list[bytes] | None = None) -> ImageStore:
+def _make_image_store(
+    request_id: str = "req-1",
+    images: list[bytes] | None = None,
+    mime_types: list[str] | None = None,
+) -> ImageStore:
     store = ImageStore()
     if images is not None:
-        store.set_images(request_id, images)
+        store.set_images(request_id, images, mime_types)
     return store
 
 
@@ -22,18 +26,18 @@ def _make_tool(
     *,
     vision_response: str = "Nutrition analysis result",
     images: list[bytes] | None = None,
+    mime_types: list[str] | None = None,
     request_id: str = "req-1",
     context_builder: ContextBuilder | None = None,
 ) -> AnalyzeFoodImageTool:
     if images is None:
         images = [b"fake-jpeg-bytes"]
     vision = FakeVisionPort(response_text=vision_response)
-    store = _make_image_store(request_id, images)
+    store = _make_image_store(request_id, images, mime_types)
     return AnalyzeFoodImageTool(
         vision=vision,
         image_store=store,
         context_builder=context_builder,
-        request_id_key=request_id,
     )
 
 

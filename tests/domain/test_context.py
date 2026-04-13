@@ -30,12 +30,15 @@ def _make_meal(
     carbs_g: float,
     fat_g: float,
 ) -> SimpleNamespace:
+    from datetime import datetime
+
     return SimpleNamespace(
         description=description,
         calories=calories,
         protein_g=protein_g,
         carbs_g=carbs_g,
         fat_g=fat_g,
+        logged_at=datetime(2026, 4, 13, 12, 30, 0),
     )
 
 
@@ -84,7 +87,7 @@ async def test_all_sections_populated_and_order() -> None:
     assert "- [allergy] Peanuts" in result
     assert "Doc snippet about fiber." in result
     assert "- Vitamin D: 28 ng/mL (ref: 30-100)" in result
-    assert "- Grilled salmon (500 kcal, 40.0g protein, 5.0g carbs, 25.0g fat)" in result
+    assert "- [2026-04-13 12:30] Grilled salmon (500 kcal, 40.0g protein, 5.0g carbs, 25.0g fat)" in result
     assert QUERY in result
 
 
@@ -191,8 +194,8 @@ async def test_meal_formatting_includes_description_and_macros() -> None:
 
     result = await builder.build(user_id=USER_ID, query=QUERY)
 
-    assert "- Oatmeal with berries (320 kcal, 12.0g protein, 55.0g carbs, 6.0g fat)" in result
-    assert "- Protein shake (200 kcal, 30.0g protein, 10.0g carbs, 5.0g fat)" in result
+    assert "- [2026-04-13 12:30] Oatmeal with berries (320 kcal, 12.0g protein, 55.0g carbs, 6.0g fat)" in result
+    assert "- [2026-04-13 12:30] Protein shake (200 kcal, 30.0g protein, 10.0g carbs, 5.0g fat)" in result
 
 
 def test_context_data_provider_is_abstract() -> None:

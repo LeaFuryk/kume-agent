@@ -82,7 +82,11 @@ class _RepositoryContextDataProvider(ContextDataProvider):
         return await self._restriction_repo.get_by_user(user_id)
 
     async def get_lab_markers(self, user_id: str) -> list[Any]:
-        return await self._marker_repo.get_by_user(user_id)
+        from datetime import UTC, datetime, timedelta
+
+        # Only include markers from the last 6 months to keep context bounded
+        since = datetime.now(UTC) - timedelta(days=180)
+        return await self._marker_repo.get_by_user(user_id, since=since)
 
     async def search_documents(self, user_id: str, query: str) -> list[str]:
         return await self._embedding_repo.search(user_id, query)
@@ -149,7 +153,7 @@ class Container:
     def vision_port(self) -> VisionPort:
         return OpenAIVisionAdapter(
             api_key=self._settings.openai_api_key,
-            model=self._settings.orchestrator_model,
+            model=self._settings.vision_model,
         )
 
     # --- Stores ---
@@ -174,6 +178,7 @@ class Container:
             "audio/mp4": AudioProcessor(stt=whisper),
             "image/jpeg": ImageProcessor(),
             "image/png": ImageProcessor(),
+            "image/webp": ImageProcessor(),
         }
         return IngestionService(processors=processors)
 

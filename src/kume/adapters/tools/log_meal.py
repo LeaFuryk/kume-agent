@@ -96,8 +96,28 @@ class LogMealTool(BaseTool):
         if not ctx:
             return "Error: user_id not set. Cannot log meal."
 
+        # Clamp values at boundaries — LLM-generated values can be nonsensical
+        confidence = max(0.0, min(1.0, confidence))
+        calories = max(0.0, calories)
+        protein_g = max(0.0, protein_g)
+        carbs_g = max(0.0, carbs_g)
+        fat_g = max(0.0, fat_g)
+        fiber_g = max(0.0, fiber_g)
+        sodium_mg = max(0.0, sodium_mg)
+        sugar_g = max(0.0, sugar_g)
+        saturated_fat_g = max(0.0, saturated_fat_g)
+        cholesterol_mg = max(0.0, cholesterol_mg)
+
         if logged_at:
-            meal_time = datetime.fromisoformat(logged_at).replace(tzinfo=UTC)
+            try:
+                parsed = datetime.fromisoformat(logged_at)
+                # Convert to UTC if timezone-aware, assume UTC if naive
+                if parsed.tzinfo is not None:
+                    meal_time = parsed.astimezone(UTC)
+                else:
+                    meal_time = parsed.replace(tzinfo=UTC)
+            except ValueError:
+                return f"Error: invalid timestamp '{logged_at}'. Use ISO format (e.g. 2026-04-13T12:00:00)."
         else:
             meal_time = datetime.now(tz=UTC)
 
