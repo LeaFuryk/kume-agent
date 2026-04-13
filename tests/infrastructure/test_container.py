@@ -5,6 +5,7 @@ from langchain_openai import ChatOpenAI
 from telegram.ext import MessageHandler
 
 from kume.adapters.output.langchain_llm import LangChainLLMAdapter
+from kume.adapters.output.openai_vision import OpenAIVisionAdapter
 from kume.adapters.output.whisper_stt import WhisperAdapter
 from kume.adapters.tools.analyze_food import AnalyzeFoodTool
 from kume.adapters.tools.ask_recommendation import AskRecommendationTool
@@ -65,14 +66,15 @@ def test_tool_llm_returns_llm_port(container: Container) -> None:
     assert isinstance(llm, LangChainLLMAdapter)
 
 
-def test_tools_returns_ten_tools(container: Container) -> None:
+def test_tools_returns_eleven_tools(container: Container) -> None:
     tools = container.tools()
     assert isinstance(tools, list)
-    assert len(tools) == 10
+    assert len(tools) == 11
     names = {t.name for t in tools}
     assert names == {
         "ask_recommendation",
         "analyze_food",
+        "analyze_food_image",
         "fetch_user_context",
         "log_meal",
         "request_report",
@@ -157,3 +159,26 @@ def test_telegram_application_registers_media_handler(mock_create_agent, contain
     # Second handler: media (documents, voice, audio, photo)
     media_handler = handlers[1]
     assert isinstance(media_handler, MessageHandler)
+
+
+# --- New tests for P3.13 ---
+
+
+def test_session_store_is_singleton(container: Container) -> None:
+    assert container.session_store() is container.session_store()
+
+
+def test_image_store_is_singleton(container: Container) -> None:
+    assert container.image_store() is container.image_store()
+
+
+@patch("kume.adapters.output.openai_vision.AsyncOpenAI")
+def test_vision_port_created(mock_openai, container: Container) -> None:
+    vision = container.vision_port()
+    assert isinstance(vision, OpenAIVisionAdapter)
+
+
+def test_analyze_food_image_tool_in_tools(container: Container) -> None:
+    tools = container.tools()
+    names = {t.name for t in tools}
+    assert "analyze_food_image" in names

@@ -12,6 +12,7 @@ from kume.adapters.input.telegram_bot import TelegramBotAdapter
 from kume.adapters.output.audio_processor import AudioProcessor
 from kume.adapters.output.image_processor import ImageProcessor
 from kume.adapters.output.langchain_llm import LangChainLLMAdapter
+from kume.adapters.output.openai_vision import OpenAIVisionAdapter
 from kume.adapters.output.pdf_processor import PDFProcessor
 from kume.adapters.output.pgvector_embedding import PGVectorEmbeddingRepository
 from kume.adapters.output.postgres_db import (
@@ -26,6 +27,7 @@ from kume.adapters.output.postgres_db import (
 from kume.adapters.output.telegram_messaging import TelegramMessagingAdapter
 from kume.adapters.output.whisper_stt import WhisperAdapter
 from kume.adapters.tools import (
+    AnalyzeFoodImageTool,
     AnalyzeFoodTool,
     AskRecommendationTool,
     FetchContextTool,
@@ -39,6 +41,8 @@ from kume.adapters.tools import (
 )
 from kume.domain.context import ContextBuilder, ContextDataProvider
 from kume.infrastructure.config import Settings
+from kume.infrastructure.image_store import ImageStore
+from kume.infrastructure.session_store import SessionStore
 from kume.ports.output.llm import LLMPort
 from kume.ports.output.repositories import (
     DocumentRepository,
@@ -49,6 +53,7 @@ from kume.ports.output.repositories import (
     RestrictionRepository,
     UserRepository,
 )
+from kume.ports.output.vision import VisionPort
 from kume.services.ingestion import IngestionService
 from kume.services.orchestrator import OrchestratorService
 
@@ -92,6 +97,8 @@ class Container:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._session_factory = create_session_factory(settings.database_url)
+        self._session_store = SessionStore()
+        self._image_store = ImageStore()
 
     # --- Repositories ---
 
@@ -137,6 +144,22 @@ class Container:
         )
         return LangChainLLMAdapter(model)
 
+    # --- Vision ---
+
+    def vision_port(self) -> VisionPort:
+        return OpenAIVisionAdapter(
+            api_key=self._settings.openai_api_key,
+            model=self._settings.orchestrator_model,
+        )
+
+    # --- Stores ---
+
+    def session_store(self) -> SessionStore:
+        return self._session_store
+
+    def image_store(self) -> ImageStore:
+        return self._image_store
+
     # --- Resource processing ---
 
     def whisper_adapter(self) -> WhisperAdapter:
@@ -175,6 +198,11 @@ class Container:
         return [
             AskRecommendationTool(llm=tool_llm, context_builder=cb),
             AnalyzeFoodTool(llm=tool_llm, context_builder=cb),
+            AnalyzeFoodImageTool(
+                vision=self.vision_port(),
+                context_builder=cb,
+                image_store=self._image_store,
+            ),
             LogMealTool(meal_repo=self.meal_repo()),
             RequestReportTool(),
             SaveGoalTool(goal_repo=self.goal_repo()),
@@ -196,6 +224,8 @@ class Container:
             tools=self.tools(),
             max_iterations=self._settings.max_agent_iterations,
             user_repo=self.user_repo(),
+            session_store=self._session_store,
+            image_store=self._image_store,
         )
 
     def telegram_application(self) -> Application:
