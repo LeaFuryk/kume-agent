@@ -134,9 +134,11 @@ class OrchestratorService:
         # to prevent race conditions on overlapping requests)
         history_messages: list[HumanMessage | AIMessage] = []
         session_lock = None
+        lock_acquired = False
         if self._session_store and user_id:
             session_lock = self._session_store._get_lock(user_id)
             await session_lock.acquire()
+            lock_acquired = True
             session = self._session_store.get_session(user_id)
             for event in session:
                 if event.role == "user":
@@ -237,7 +239,7 @@ class OrchestratorService:
             logger.exception("Error processing message for telegram_id=%d", telegram_id)
             return "Sorry, something went wrong. Please try again."
         finally:
-            if session_lock and session_lock.locked():
+            if session_lock and lock_acquired:
                 session_lock.release()
             if self._image_store:
                 self._image_store.clear(request_id)

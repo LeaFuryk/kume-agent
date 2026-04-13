@@ -49,8 +49,16 @@ class SessionStore:
         return session
 
     def _evict_stale(self, now: datetime) -> None:
-        """Remove users who haven't been active recently."""
-        stale = [uid for uid, last in self._last_access.items() if (now - last).total_seconds() > _EVICTION_SECONDS]
+        """Remove users who haven't been active recently.
+
+        Skips users whose lock is currently held (active request in progress).
+        """
+        stale = [
+            uid
+            for uid, last in self._last_access.items()
+            if (now - last).total_seconds() > _EVICTION_SECONDS
+            and not (uid in self._locks and self._locks[uid].locked())
+        ]
         for uid in stale:
             self._history.pop(uid, None)
             self._last_access.pop(uid, None)
