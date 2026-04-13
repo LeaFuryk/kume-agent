@@ -82,7 +82,11 @@ class _RepositoryContextDataProvider(ContextDataProvider):
         return await self._restriction_repo.get_by_user(user_id)
 
     async def get_lab_markers(self, user_id: str) -> list[Any]:
-        return await self._marker_repo.get_by_user(user_id)
+        from datetime import UTC, datetime, timedelta
+
+        # Only include markers from the last 6 months to keep context bounded
+        since = datetime.now(UTC) - timedelta(days=180)
+        return await self._marker_repo.get_by_user(user_id, since=since)
 
     async def search_documents(self, user_id: str, query: str) -> list[str]:
         return await self._embedding_repo.search(user_id, query)

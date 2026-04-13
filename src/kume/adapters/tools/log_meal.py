@@ -108,20 +108,18 @@ class LogMealTool(BaseTool):
         saturated_fat_g = max(0.0, saturated_fat_g)
         cholesterol_mg = max(0.0, cholesterol_mg)
 
-        time_note = ""
-        try:
-            if logged_at:
+        if logged_at:
+            try:
                 parsed = datetime.fromisoformat(logged_at)
                 # Convert to UTC if timezone-aware, assume UTC if naive
                 if parsed.tzinfo is not None:
                     meal_time = parsed.astimezone(UTC)
                 else:
                     meal_time = parsed.replace(tzinfo=UTC)
-            else:
-                meal_time = datetime.now(tz=UTC)
-        except ValueError:
+            except ValueError:
+                return f"Error: invalid timestamp '{logged_at}'. Use ISO format (e.g. 2026-04-13T12:00:00)."
+        else:
             meal_time = datetime.now(tz=UTC)
-            time_note = f" (Note: couldn't parse '{logged_at}' as a time — logged as now)"
 
         meal = Meal(
             id=str(uuid4()),
@@ -145,5 +143,4 @@ class LogMealTool(BaseTool):
             f"Meal logged: {description} "
             f"({calories:.0f} kcal, {protein_g:.0f}g protein, "
             f"{carbs_g:.0f}g carbs, {fat_g:.0f}g fat)"
-            f"{time_note}"
         )
