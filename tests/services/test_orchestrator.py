@@ -1,17 +1,21 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.tools import BaseTool
 
+from kume.domain.conversation import ConversationEvent
+from kume.infrastructure.image_store import ImageStore
 from kume.infrastructure.metrics import MetricsCallbackHandler
 from kume.infrastructure.request_context import get_context
-from kume.services.orchestrator import OrchestratorService, _extract_text_content
+from kume.infrastructure.session_store import SessionStore
+from kume.services.orchestrator import OrchestratorService, Resource, _extract_text_content
 from tests.adapters.tools.conftest import FakeUserRepository
 
 
@@ -182,3 +186,154 @@ def test_extract_text_content_none() -> None:
 def test_extract_text_content_mixed_list() -> None:
     blocks = ["plain", {"type": "text", "text": "structured"}]
     assert _extract_text_content(blocks) == "plainstructured"
+
+
+# --- Session & Image store tests ---
+
+
+async def test_session_history_loaded(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
+    """Session events are converted to HumanMessage/AIMessage and prepended to agent input."""
+    user_repo = FakeUserRepository()
+    session_store = SessionStore()
+    now = datetime.now(UTC)
+
+    # Pre-populate session with one exchange
+    session_store.add(
+        "fake-user",
+        ConversationEvent(id="e1", user_id="fake-user", role="user", content="previous question", created_at=now),
+    )
+    session_store.add(
+        "fake-user",
+        ConversationEvent(id="e2", user_id="fake-user", role="assistant", content="previous answer", created_at=now),
+    )
+
+    orch = OrchestratorService(
+        llm=fake_llm,
+        tools=fake_tools,
+        user_repo=user_repo,
+        session_store=session_store,
+    )
+
+    with patch.object(
+        orch._agent,
+        "ainvoke",
+        new_callable=AsyncMock,
+        return_value={"messages": [AIMessage(content="current response")]},
+    ) as mock_ainvoke:
+        await orch.process(telegram_id=99, user_message="current question")
+
+    # Verify the messages passed to agent include history
+    call_args = mock_ainvoke.call_args
+    passed_messages = call_args[0][0]["messages"] if call_args[0] else call_args.kwargs["messages"]
+    assert len(passed_messages) == 3
+    assert isinstance(passed_messages[0], HumanMessage)
+    assert passed_messages[0].content == "previous question"
+    assert isinstance(passed_messages[1], AIMessage)
+    assert passed_messages[1].content == "previous answer"
+    assert isinstance(passed_messages[2], HumanMessage)
+
+
+async def test_events_saved_after_response(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
+    """SessionStore.add is called with user + assistant events after a successful response."""
+    user_repo = FakeUserRepository()
+    session_store = SessionStore()
+
+    orch = OrchestratorService(
+        llm=fake_llm,
+        tools=fake_tools,
+        user_repo=user_repo,
+        session_store=session_store,
+    )
+
+    with patch.object(
+        orch._agent,
+        "ainvoke",
+        new_callable=AsyncMock,
+        return_value={"messages": [AIMessage(content="bot reply")]},
+    ):
+        await orch.process(telegram_id=99, user_message="hello")
+
+    # Session should now contain 2 events (user + assistant)
+    events = session_store.get_session("fake-user")
+    assert len(events) == 2
+    assert events[0].role == "user"
+    assert "hello" in events[0].content
+    assert events[1].role == "assistant"
+    assert events[1].content == "bot reply"
+
+
+async def test_images_set_and_cleared(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
+    """ImageStore.set_images is called with image bytes and clear is called after."""
+    user_repo = FakeUserRepository()
+    image_store = ImageStore()
+
+    orch = OrchestratorService(
+        llm=fake_llm,
+        tools=fake_tools,
+        user_repo=user_repo,
+        image_store=image_store,
+    )
+
+    resources = [
+        Resource(mime_type="image/jpeg", transcript="a photo of food", raw_bytes=b"jpeg-bytes"),
+        Resource(mime_type="application/pdf", transcript="a pdf doc", raw_bytes=b"pdf-bytes"),
+    ]
+
+    with patch.object(
+        orch._agent,
+        "ainvoke",
+        new_callable=AsyncMock,
+        return_value={"messages": [AIMessage(content="analyzed")]},
+    ) as mock_ainvoke:
+        # Intercept to check images are set during invocation
+        async def check_images_set(*args: Any, **kwargs: Any) -> dict:
+            # Images should be stored at this point (before clear)
+            assert image_store._images  # at least one request_id has images
+            return {"messages": [AIMessage(content="analyzed")]}
+
+        mock_ainvoke.side_effect = check_images_set
+        result = await orch.process(telegram_id=99, user_message="analyze", resources=resources)
+
+    assert result == "analyzed"
+    # After process() returns, images should be cleared
+    assert len(image_store._images) == 0
+
+
+async def test_images_cleared_on_exception(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
+    """ImageStore.clear is called even when the agent raises an exception."""
+    image_store = ImageStore()
+
+    orch = OrchestratorService(
+        llm=fake_llm,
+        tools=fake_tools,
+        image_store=image_store,
+    )
+
+    resources = [
+        Resource(mime_type="image/png", transcript="a photo", raw_bytes=b"png-bytes"),
+    ]
+
+    with patch.object(
+        orch._agent,
+        "ainvoke",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("boom"),
+    ):
+        result = await orch.process(telegram_id=1, user_message="test", resources=resources)
+
+    assert result == "Sorry, something went wrong. Please try again."
+    # Images should still be cleared in the finally block
+    assert len(image_store._images) == 0
+
+
+async def test_backward_compat_no_stores(orchestrator: OrchestratorService) -> None:
+    """Existing behavior is unchanged when session_store and image_store are None."""
+    with patch.object(
+        orchestrator._agent,
+        "ainvoke",
+        new_callable=AsyncMock,
+        return_value={"messages": [AIMessage(content="works fine")]},
+    ):
+        result = await orchestrator.process(telegram_id=12345, user_message="hi there")
+
+    assert result == "works fine"
