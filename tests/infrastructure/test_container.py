@@ -139,7 +139,7 @@ def test_context_builder_returns_context_builder(container: Container) -> None:
 def test_whisper_adapter_returns_whisper_adapter(mock_openai, container: Container) -> None:
     adapter = container.whisper_adapter()
     assert isinstance(adapter, WhisperAdapter)
-    mock_openai.assert_called_once_with(api_key="fake-key")
+    mock_openai.assert_called_once_with(api_key="fake-key", max_retries=3)
 
 
 def test_tools_include_context_builder_in_ask_recommendation_and_analyze_food(container: Container) -> None:

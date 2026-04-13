@@ -21,7 +21,7 @@ class WhisperAdapter(SpeechToTextPort):
     """
 
     def __init__(self, api_key: str, model: str = "whisper-1") -> None:
-        self._client = AsyncOpenAI(api_key=api_key)
+        self._client = AsyncOpenAI(api_key=api_key, max_retries=3)
         self._model = model
 
     async def transcribe(self, audio_bytes: bytes, language: str = "es", *, mime_type: str | None = None) -> str:

@@ -138,6 +138,7 @@ class Container:
         return ChatOpenAI(
             model=self._settings.orchestrator_model,
             api_key=SecretStr(self._settings.openai_api_key),
+            max_retries=3,
         )
 
     def tool_llm(self) -> LLMPort:
@@ -145,6 +146,7 @@ class Container:
         model = ChatOpenAI(
             model=self._settings.tool_model,
             api_key=SecretStr(self._settings.openai_api_key),
+            max_retries=3,
         )
         return LangChainLLMAdapter(model)
 
