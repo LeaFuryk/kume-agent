@@ -286,8 +286,6 @@ async def test_images_set_and_cleared(fake_llm: FakeChatModel, fake_tools: list[
         return_value={"messages": [AIMessage(content="analyzed")]},
     ) as mock_ainvoke:
         # Intercept to check images are set during invocation
-        original_ainvoke = mock_ainvoke.side_effect
-
         async def check_images_set(*args: Any, **kwargs: Any) -> dict:
             # Images should be stored at this point (before clear)
             assert image_store._images  # at least one request_id has images

@@ -16,8 +16,10 @@ from kume.infrastructure.image_store import ImageStore
 from kume.infrastructure.metrics import MetricsCallbackHandler, MetricsCollector
 from kume.infrastructure.request_context import (
     RequestContext,
-    get_context as get_request_context,
     set_context,
+)
+from kume.infrastructure.request_context import (
+    get_context as get_request_context,
 )
 from kume.infrastructure.session_store import SessionStore
 from kume.ports.output.repositories import UserRepository
