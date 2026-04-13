@@ -24,6 +24,7 @@ def settings() -> Settings:
         openai_api_key="fake-key",
         orchestrator_model="gpt-4o",
         tool_model="gpt-4o-mini",
+        vision_model="gpt-4o",
         max_agent_iterations=5,
         log_level="INFO",
         database_url="postgresql+asyncpg://kume:kume@localhost:5432/kume",

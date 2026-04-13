@@ -149,7 +149,7 @@ class Container:
     def vision_port(self) -> VisionPort:
         return OpenAIVisionAdapter(
             api_key=self._settings.openai_api_key,
-            model=self._settings.orchestrator_model,
+            model=self._settings.vision_model,
         )
 
     # --- Stores ---

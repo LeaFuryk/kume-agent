@@ -96,6 +96,19 @@ class LogMealTool(BaseTool):
         if not ctx:
             return "Error: user_id not set. Cannot log meal."
 
+        # Clamp values at boundaries — LLM-generated values can be nonsensical
+        confidence = max(0.0, min(1.0, confidence))
+        calories = max(0.0, calories)
+        protein_g = max(0.0, protein_g)
+        carbs_g = max(0.0, carbs_g)
+        fat_g = max(0.0, fat_g)
+        fiber_g = max(0.0, fiber_g)
+        sodium_mg = max(0.0, sodium_mg)
+        sugar_g = max(0.0, sugar_g)
+        saturated_fat_g = max(0.0, saturated_fat_g)
+        cholesterol_mg = max(0.0, cholesterol_mg)
+
+        time_note = ""
         try:
             if logged_at:
                 parsed = datetime.fromisoformat(logged_at)
@@ -107,7 +120,8 @@ class LogMealTool(BaseTool):
             else:
                 meal_time = datetime.now(tz=UTC)
         except ValueError:
-            meal_time = datetime.now(tz=UTC)  # fallback on invalid format
+            meal_time = datetime.now(tz=UTC)
+            time_note = f" (Note: couldn't parse '{logged_at}' as a time — logged as now)"
 
         meal = Meal(
             id=str(uuid4()),
@@ -131,4 +145,5 @@ class LogMealTool(BaseTool):
             f"Meal logged: {description} "
             f"({calories:.0f} kcal, {protein_g:.0f}g protein, "
             f"{carbs_g:.0f}g carbs, {fat_g:.0f}g fat)"
+            f"{time_note}"
         )

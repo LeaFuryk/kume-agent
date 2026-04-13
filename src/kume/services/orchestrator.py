@@ -151,9 +151,9 @@ class OrchestratorService:
                     [r.mime_type for r in image_resources],
                 )
 
-        # User message
+        # User message (labeled to match prompt's language detection instructions)
         if user_message:
-            parts.append(f"User says: {user_message}")
+            parts.append(f"[User message]: {user_message}")
 
         # Resources
         if resources:
@@ -172,9 +172,14 @@ class OrchestratorService:
 
             parts.append(f"Attached resources: {', '.join(type_summary)}")
 
-            # Add each transcript labeled
-            for i, resource in enumerate(resources, 1):
-                parts.append(f"Resource {i} ({resource.mime_type}):\n{resource.transcript}")
+            # Add each transcript labeled, with image-specific indices for analyze_food_image
+            image_idx = 0
+            for resource in resources:
+                if resource.mime_type.startswith("image/"):
+                    image_idx += 1
+                    parts.append(f"Image {image_idx} ({resource.mime_type}):\n{resource.transcript}")
+                else:
+                    parts.append(f"Document ({resource.mime_type}):\n{resource.transcript}")
 
         full_message = "\n\n".join(parts)
 

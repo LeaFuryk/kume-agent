@@ -8,6 +8,7 @@ class Settings:
     openai_api_key: str
     orchestrator_model: str
     tool_model: str
+    vision_model: str
     max_agent_iterations: int
     log_level: str
     database_url: str
@@ -30,6 +31,7 @@ class Settings:
             openai_api_key=openai_api_key,
             orchestrator_model=os.environ.get("ORCHESTRATOR_MODEL", "gpt-4o"),
             tool_model=os.environ.get("TOOL_MODEL", "gpt-4o-mini"),
+            vision_model=os.environ.get("VISION_MODEL", "gpt-4o"),
             max_agent_iterations=max_iterations,
             log_level=os.environ.get("LOG_LEVEL", "INFO"),
             database_url=os.environ.get(
