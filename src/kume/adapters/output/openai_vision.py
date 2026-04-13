@@ -9,7 +9,7 @@ class OpenAIVisionAdapter(VisionPort):
     """Vision adapter using OpenAI's chat completions API with image support."""
 
     def __init__(self, api_key: str, model: str = "gpt-4o") -> None:
-        self._client = AsyncOpenAI(api_key=api_key)
+        self._client = AsyncOpenAI(api_key=api_key, max_retries=3)
         self._model = model
 
     async def analyze_image(
