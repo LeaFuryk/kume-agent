@@ -13,7 +13,7 @@ from langchain_core.tools import BaseTool
 
 from kume.domain.conversation import ConversationEvent
 from kume.infrastructure.image_store import ImageStore
-from kume.infrastructure.metrics import MetricsCallbackHandler, MetricsCollector
+from kume.infrastructure.metrics import MetricsCallbackHandler, MetricsCollector, ReasoningCallbackHandler
 from kume.infrastructure.request_context import (
     RequestContext,
     set_context,
@@ -116,8 +116,9 @@ class OrchestratorService:
     ) -> str:
         """Process a user message through the agentic loop and return the response."""
         collector = MetricsCollector()
-        collector.start_request(telegram_id)
+        collector.start_request(telegram_id, user_name=user_name)
         callback_handler = MetricsCallbackHandler(collector)
+        reasoning_handler = ReasoningCallbackHandler(user_name=user_name)
 
         parts: list[str] = []
 
@@ -192,11 +193,14 @@ class OrchestratorService:
         # Build messages with history + current message
         messages = history_messages + [HumanMessage(content=full_message)]
 
+        # Log user message for reasoning chain
+        reasoning_handler.log_user_message(user_message or "(no text)", user_name)
+
         try:
             result = await self._agent.ainvoke(
                 {"messages": messages},
                 config={
-                    "callbacks": [callback_handler],
+                    "callbacks": [callback_handler, reasoning_handler],
                     "recursion_limit": self._max_iterations * 2,
                 },
             )
@@ -204,6 +208,7 @@ class OrchestratorService:
             if resp_messages:
                 response_text = _extract_text_content(resp_messages[-1].content)
                 if response_text.strip():
+                    reasoning_handler.log_response(response_text)
                     # Save conversation events to SessionStore
                     # Use a compact summary for session history to avoid replaying
                     # full resource transcripts (PDFs, OCR) on subsequent turns.

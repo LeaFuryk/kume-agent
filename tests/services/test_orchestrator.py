@@ -12,7 +12,7 @@ from langchain_core.tools import BaseTool
 
 from kume.domain.conversation import ConversationEvent
 from kume.infrastructure.image_store import ImageStore
-from kume.infrastructure.metrics import MetricsCallbackHandler
+from kume.infrastructure.metrics import MetricsCallbackHandler, ReasoningCallbackHandler
 from kume.infrastructure.request_context import get_context
 from kume.infrastructure.session_store import SessionStore
 from kume.services.orchestrator import OrchestratorService, Resource, _extract_text_content
@@ -104,8 +104,9 @@ async def test_process_passes_callback_handler(orchestrator: OrchestratorService
     call_kwargs = mock_ainvoke.call_args
     config = call_kwargs.kwargs.get("config") or call_kwargs[1].get("config")
     callbacks = config["callbacks"]
-    assert len(callbacks) == 1
+    assert len(callbacks) == 2
     assert isinstance(callbacks[0], MetricsCallbackHandler)
+    assert isinstance(callbacks[1], ReasoningCallbackHandler)
 
 
 async def test_process_returns_default_when_messages_empty(orchestrator: OrchestratorService) -> None:
