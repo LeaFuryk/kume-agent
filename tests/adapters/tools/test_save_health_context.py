@@ -12,7 +12,7 @@ class TestSaveHealthContextTool:
 
         tool = SaveHealthContextTool(doc_repo=doc_repo, embedding_repo=embedding_repo)
         assert tool.name == "save_health_context"
-        assert "health context" in tool.description.lower()
+        assert "health data" in tool.description.lower()
 
     @pytest.mark.asyncio
     async def test_saves_document_and_embeds(self) -> None:

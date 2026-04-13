@@ -31,8 +31,8 @@ class SaveHealthContextTool(BaseTool):
 
     name: str = "save_health_context"
     description: str = (
-        "Save and index general health context information "
-        "(diet plans, medical notes, personal health data like weight, height, activity level)"
+        "Save and index personal health data (weight, height, activity, diet plans, medical notes). "
+        "Example: 'I weigh 80kg' → save_health_context(text='Weight: 80kg')"
     )
     args_schema: type[BaseModel] = SaveHealthContextInput
     doc_repo: DocumentRepository = Field(exclude=True)

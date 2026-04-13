@@ -31,7 +31,10 @@ class SaveRestrictionTool(BaseTool):
     """
 
     name: str = "save_restriction"
-    description: str = "Save a dietary restriction (allergy, intolerance, or diet preference) for the user"
+    description: str = (
+        "Save a dietary restriction. Type: 'allergy', 'intolerance', or 'diet'. "
+        "Example: 'I'm lactose intolerant' → save_restriction(type='intolerance', description='Lactose intolerant')"
+    )
     args_schema: type[BaseModel] = SaveRestrictionInput
     restriction_repo: RestrictionRepository = Field(exclude=True)
 

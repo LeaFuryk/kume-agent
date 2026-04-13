@@ -32,7 +32,10 @@ class AnalyzeFoodTool(BaseTool):
     """
 
     name: str = "analyze_food"
-    description: str = "Analyze a food item or meal for nutritional content and alignment with health goals"
+    description: str = (
+        "Analyze a food item for nutritional content and health-goal alignment. "
+        "Example: user asks 'can I eat pizza?' → analyze_food(description='pizza')"
+    )
     args_schema: type[BaseModel] = AnalyzeFoodInput
     llm: LLMPort = Field(exclude=True)
     context_builder: ContextBuilder | None = Field(default=None, exclude=True)

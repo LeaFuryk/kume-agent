@@ -33,7 +33,8 @@ class AskRecommendationTool(BaseTool):
 
     name: str = "ask_recommendation"
     description: str = (
-        "Get personalized nutrition recommendations based on the user's question about diet, meals, or health goals"
+        "Get personalized nutrition advice using the user's saved health context. "
+        "Example: 'what should I eat for breakfast?' → ask_recommendation(query='breakfast recommendations')"
     )
     args_schema: type[BaseModel] = AskRecommendationInput
     llm: LLMPort = Field(exclude=True)
