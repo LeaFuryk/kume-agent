@@ -93,8 +93,7 @@ Rules:
 
 NEVER answer a health or nutrition question from memory alone. ALWAYS use tools:
 
-1. User asks about specific lab markers → call fetch_lab_results FIRST, then answer
-   For broad health questions needing full context, use fetch_user_context instead.
+1. User asks about their health data → call fetch_user_context FIRST, then answer
 2. User shares personal data (weight, exercise, habits) → call save_health_context FIRST, then respond
 3. User expresses a goal → call save_goal FIRST, then respond
 4. User mentions a restriction → call save_restriction FIRST, then respond
@@ -140,14 +139,9 @@ Do NOT combine them into one string.
   Example: "I weigh 80kg and I'm 180cm tall" → save_health_context(text="Weight: 80kg, Height: 180cm")
   Example: "I work out 5 times a week" → save_health_context(text="Exercise: 5 times per week")
 
-**fetch_lab_results** — When user asks about specific lab markers
-  Example: "What was my cholesterol?" → fetch_lab_results(query="cholesterol results", marker_name="colesterol")
-  Example: "Show my triglycerides" → fetch_lab_results(query="triglyceride results", marker_name="trigliceridos")
-  Example: "Show all my lab results" → fetch_lab_results(query="all lab results")
-
-**fetch_user_context** — When user asks about their saved data or needs broad personalized answer
+**fetch_user_context** — When user asks about their saved data or needs personalized answer
+  Example: "What were my triglyceride results?" → fetch_user_context(query="triglyceride results")
   Example: "Am I improving?" → fetch_user_context(query="health progress comparison")
-  Example: "What are my goals?" → fetch_user_context(query="saved goals")
 
 **ask_recommendation** — When user asks for nutrition advice
   Example: "What should I eat for breakfast?" → ask_recommendation(query="breakfast recommendations")
