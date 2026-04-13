@@ -140,12 +140,16 @@ class OrchestratorService:
                 else:
                     history_messages.append(AIMessage(content=event.content))
 
-        # Store image bytes in ImageStore for tools to access
+        # Store image bytes + MIME types in ImageStore for tools to access
         request_id = str(uuid4())
         if self._image_store and resources:
-            image_bytes_list = [r.raw_bytes for r in resources if r.raw_bytes and r.mime_type.startswith("image/")]
-            if image_bytes_list:
-                self._image_store.set_images(request_id, image_bytes_list)
+            image_resources = [r for r in resources if r.raw_bytes and r.mime_type.startswith("image/")]
+            if image_resources:
+                self._image_store.set_images(
+                    request_id,
+                    [r.raw_bytes for r in image_resources],
+                    [r.mime_type for r in image_resources],
+                )
 
         # User message
         if user_message:
@@ -220,4 +224,5 @@ class OrchestratorService:
         finally:
             if self._image_store:
                 self._image_store.clear(request_id)
+            set_context(None)  # type: ignore[arg-type]  # clear stale user context
             collector.end_request()

@@ -35,4 +35,6 @@ class OpenAIVisionAdapter(VisionPort):
                 },
             ],
         )
-        return response.choices[0].message.content or ""
+        if response.choices:
+            return response.choices[0].message.content or ""
+        return ""

@@ -96,10 +96,18 @@ class LogMealTool(BaseTool):
         if not ctx:
             return "Error: user_id not set. Cannot log meal."
 
-        if logged_at:
-            meal_time = datetime.fromisoformat(logged_at).replace(tzinfo=UTC)
-        else:
-            meal_time = datetime.now(tz=UTC)
+        try:
+            if logged_at:
+                parsed = datetime.fromisoformat(logged_at)
+                # Convert to UTC if timezone-aware, assume UTC if naive
+                if parsed.tzinfo is not None:
+                    meal_time = parsed.astimezone(UTC)
+                else:
+                    meal_time = parsed.replace(tzinfo=UTC)
+            else:
+                meal_time = datetime.now(tz=UTC)
+        except ValueError:
+            meal_time = datetime.now(tz=UTC)  # fallback on invalid format
 
         meal = Meal(
             id=str(uuid4()),

@@ -12,13 +12,14 @@ class TestImageProcessor:
     async def test_returns_signal_text(self) -> None:
         processor = ImageProcessor()
         result = await processor.process(b"fake-image-bytes")
-        assert "Food image attached" in result
+        assert "Image attached" in result
 
     @pytest.mark.asyncio
-    async def test_message_mentions_analyze_tool(self) -> None:
+    async def test_signal_text_is_neutral(self) -> None:
+        """Signal text should not reference specific tool names."""
         processor = ImageProcessor()
         result = await processor.process(b"\x89PNG\r\n")
-        assert "analyze_food_image" in result
+        assert "analysis" in result.lower()
 
     @pytest.mark.asyncio
     async def test_returns_string(self) -> None:

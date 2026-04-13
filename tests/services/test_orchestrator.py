@@ -148,23 +148,27 @@ async def test_process_handles_structured_content_blocks(orchestrator: Orchestra
 
 
 async def test_process_sets_request_context_via_contextvar(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
-    """process() sets RequestContext contextvar when user_repo is provided."""
+    """process() sets RequestContext contextvar during agent invocation."""
     user_repo = FakeUserRepository()
     orch = OrchestratorService(llm=fake_llm, tools=fake_tools, user_repo=user_repo)
 
-    with patch.object(
-        orch._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={"messages": [AIMessage(content="ok")]},
-    ):
+    captured_ctx = None
+
+    async def capture_context(*args: Any, **kwargs: Any) -> dict:
+        nonlocal captured_ctx
+        captured_ctx = get_context()
+        return {"messages": [AIMessage(content="ok")]}
+
+    with patch.object(orch._agent, "ainvoke", new_callable=AsyncMock, side_effect=capture_context):
         await orch.process(telegram_id=99, user_message="hi")
 
-    ctx = get_context()
-    assert ctx is not None
-    assert ctx.user_id == "fake-user"
-    assert ctx.telegram_id == 99
-    assert ctx.language == "en"
+    # Context is set during the agent call (cleared in finally)
+    assert captured_ctx is not None
+    assert captured_ctx.user_id == "fake-user"
+    assert captured_ctx.telegram_id == 99
+    assert captured_ctx.language == "en"
+    # After process() returns, context should be cleared
+    assert get_context() is None
 
 
 # --- _extract_text_content tests ---
@@ -288,7 +292,7 @@ async def test_images_set_and_cleared(fake_llm: FakeChatModel, fake_tools: list[
         # Intercept to check images are set during invocation
         async def check_images_set(*args: Any, **kwargs: Any) -> dict:
             # Images should be stored at this point (before clear)
-            assert image_store._images  # at least one request_id has images
+            assert image_store._data  # at least one request_id has images
             return {"messages": [AIMessage(content="analyzed")]}
 
         mock_ainvoke.side_effect = check_images_set
@@ -296,7 +300,7 @@ async def test_images_set_and_cleared(fake_llm: FakeChatModel, fake_tools: list[
 
     assert result == "analyzed"
     # After process() returns, images should be cleared
-    assert len(image_store._images) == 0
+    assert len(image_store._data) == 0
 
 
 async def test_images_cleared_on_exception(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
@@ -323,7 +327,7 @@ async def test_images_cleared_on_exception(fake_llm: FakeChatModel, fake_tools: 
 
     assert result == "Sorry, something went wrong. Please try again."
     # Images should still be cleared in the finally block
-    assert len(image_store._images) == 0
+    assert len(image_store._data) == 0
 
 
 async def test_backward_compat_no_stores(orchestrator: OrchestratorService) -> None:
