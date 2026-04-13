@@ -19,7 +19,6 @@ from kume.infrastructure.image_store import ImageStore
 from kume.infrastructure.session_store import SessionStore
 from kume.ports.output.vision import VisionPort
 
-
 # ---------------------------------------------------------------------------
 # Test 1 — SessionStore preserves history within a session
 # ---------------------------------------------------------------------------
