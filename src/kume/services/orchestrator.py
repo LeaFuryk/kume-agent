@@ -199,15 +199,21 @@ class OrchestratorService:
                 response_text = _extract_text_content(resp_messages[-1].content)
                 if response_text.strip():
                     # Save conversation events to SessionStore
+                    # Use a compact summary for session history to avoid replaying
+                    # full resource transcripts (PDFs, OCR) on subsequent turns.
                     if self._session_store and user_id:
                         now = datetime.now(UTC)
+                        history_content = user_message or ""
+                        if resources:
+                            resource_types = [r.mime_type for r in resources]
+                            history_content += f" [+ {len(resources)} attachment(s): {', '.join(resource_types)}]"
                         self._session_store.add(
                             user_id,
                             ConversationEvent(
                                 id=str(uuid4()),
                                 user_id=user_id,
                                 role="user",
-                                content=full_message,
+                                content=history_content.strip(),
                                 created_at=now,
                             ),
                         )

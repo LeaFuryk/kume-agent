@@ -81,7 +81,8 @@ class ContextBuilder:
             meals = await self._provider.get_recent_meals(user_id)
             if meals:
                 meals_text = "\n".join(
-                    f"- {m.description} ({m.calories} kcal, {m.protein_g}g protein, {m.carbs_g}g carbs, {m.fat_g}g fat)"
+                    f"- [{m.logged_at.strftime('%Y-%m-%d %H:%M')}] {m.description} "
+                    f"({m.calories} kcal, {m.protein_g}g protein, {m.carbs_g}g carbs, {m.fat_g}g fat)"
                     for m in meals
                 )
                 sections.append(f"## Recent Meals\n{meals_text}")
