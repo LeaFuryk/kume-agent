@@ -12,8 +12,6 @@ from kume.adapters.tools.ask_recommendation import AskRecommendationTool
 from kume.domain.context import ContextBuilder
 from kume.infrastructure.config import Settings
 from kume.infrastructure.container import Container
-from kume.infrastructure.image_store import ImageStore
-from kume.infrastructure.session_store import SessionStore
 from kume.ports.output.llm import LLMPort
 from kume.ports.output.repositories import EmbeddingRepository
 from kume.services.ingestion import IngestionService

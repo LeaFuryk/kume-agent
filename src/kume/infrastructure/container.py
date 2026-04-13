@@ -12,6 +12,7 @@ from kume.adapters.input.telegram_bot import TelegramBotAdapter
 from kume.adapters.output.audio_processor import AudioProcessor
 from kume.adapters.output.image_processor import ImageProcessor
 from kume.adapters.output.langchain_llm import LangChainLLMAdapter
+from kume.adapters.output.openai_vision import OpenAIVisionAdapter
 from kume.adapters.output.pdf_processor import PDFProcessor
 from kume.adapters.output.pgvector_embedding import PGVectorEmbeddingRepository
 from kume.adapters.output.postgres_db import (
@@ -25,7 +26,6 @@ from kume.adapters.output.postgres_db import (
 )
 from kume.adapters.output.telegram_messaging import TelegramMessagingAdapter
 from kume.adapters.output.whisper_stt import WhisperAdapter
-from kume.adapters.output.openai_vision import OpenAIVisionAdapter
 from kume.adapters.tools import (
     AnalyzeFoodImageTool,
     AnalyzeFoodTool,
@@ -44,7 +44,6 @@ from kume.infrastructure.config import Settings
 from kume.infrastructure.image_store import ImageStore
 from kume.infrastructure.session_store import SessionStore
 from kume.ports.output.llm import LLMPort
-from kume.ports.output.vision import VisionPort
 from kume.ports.output.repositories import (
     DocumentRepository,
     EmbeddingRepository,
@@ -54,6 +53,7 @@ from kume.ports.output.repositories import (
     RestrictionRepository,
     UserRepository,
 )
+from kume.ports.output.vision import VisionPort
 from kume.services.ingestion import IngestionService
 from kume.services.orchestrator import OrchestratorService
 
