@@ -110,11 +110,9 @@ class Container:
         self._doc_repo = PostgresDocumentRepository(self._session_factory)
         self._marker_repo = PostgresLabMarkerRepository(self._session_factory)
         self._meal_repo = PostgresMealRepository(self._session_factory)
-        self._embedding_repo = PGVectorEmbeddingRepository(
-            database_url=settings.database_url,
-            openai_api_key=settings.openai_api_key,
-            embedding_model=settings.openai_embedding_model,
-        )
+        # embedding_repo is lazy — PGVector opens a sync DB connection on init,
+        # which fails in environments without PostgreSQL (CI, tests).
+        self._embedding_repo: EmbeddingRepository | None = None
 
     # --- Repositories ---
 
@@ -137,6 +135,12 @@ class Container:
         return self._meal_repo
 
     def embedding_repo(self) -> EmbeddingRepository:
+        if self._embedding_repo is None:
+            self._embedding_repo = PGVectorEmbeddingRepository(
+                database_url=self._settings.database_url,
+                openai_api_key=self._settings.openai_api_key,
+                embedding_model=self._settings.openai_embedding_model,
+            )
         return self._embedding_repo
 
     # --- LLM ---
