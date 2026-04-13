@@ -141,15 +141,6 @@ class MetricsCallbackHandler(BaseCallbackHandler):
 
 _reasoning_logger = logging.getLogger("kume.reasoning")
 
-_MAX_CONTENT_PREVIEW = 500  # max chars to show for tool responses
-_MAX_CONTEXT_PREVIEW = 800  # larger limit for fetch_user_context
-
-
-def _truncate(text: str, limit: int) -> str:
-    if len(text) <= limit:
-        return text
-    return text[:limit] + f"\n    ... ({len(text) - limit} more chars)"
-
 
 class ReasoningCallbackHandler(BaseCallbackHandler):
     """Logs the agent's reasoning chain: tool calls, tool results, and LLM decisions.
@@ -166,18 +157,16 @@ class ReasoningCallbackHandler(BaseCallbackHandler):
         tool_name = serialized.get("name", "unknown")
         self._tool_names[str(run_id)] = tool_name
         self._tool_inputs[str(run_id)] = input_str
-        _reasoning_logger.info("\u2502 \U0001f527 Tool call: %s(%s)", tool_name, _truncate(input_str, 200))
+        _reasoning_logger.info("\u2502 \U0001f527 Tool call: %s(%s)", tool_name, input_str)
 
     def on_tool_end(self, output: Any, *, run_id: Any, **kwargs: Any) -> None:
         tool_name = self._tool_names.pop(str(run_id), "unknown")
         self._tool_inputs.pop(str(run_id), None)
         output_str = str(output) if output else "(empty)"
-        # Larger preview for context tools
-        limit = _MAX_CONTEXT_PREVIEW if tool_name == "fetch_user_context" else _MAX_CONTENT_PREVIEW
         _reasoning_logger.info(
             "\u2502   \u2514\u2500 \u2705 %s result:\n%s",
             tool_name,
-            _indent(_truncate(output_str, limit)),
+            _indent(output_str),
         )
 
     def on_tool_error(self, error: BaseException, *, run_id: Any, **kwargs: Any) -> None:
@@ -194,13 +183,13 @@ class ReasoningCallbackHandler(BaseCallbackHandler):
         _reasoning_logger.info(
             "\u2502 \U0001f464 %s: %s",
             name_display,
-            _truncate(user_message, 300),
+            user_message,
         )
 
     def log_response(self, response: str) -> None:
         _reasoning_logger.info(
             "\u2502 \U0001f916 Kume: %s",
-            _truncate(response, 500),
+            response,
         )
 
 
