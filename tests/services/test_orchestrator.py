@@ -342,3 +342,107 @@ async def test_backward_compat_no_stores(orchestrator: OrchestratorService) -> N
         result = await orchestrator.process(telegram_id=12345, user_message="hi there")
 
     assert result == "works fine"
+
+
+# --- Language instruction tests ---
+
+
+async def test_language_instruction_included_when_language_provided(
+    fake_llm: FakeChatModel, fake_tools: list[BaseTool]
+) -> None:
+    """When language is provided, a '[Respond in: ...]' instruction appears in the message."""
+    user_repo = FakeUserRepository()
+    orch = OrchestratorService(llm=fake_llm, tools=fake_tools, user_repo=user_repo)
+
+    with patch.object(
+        orch._agent,
+        "ainvoke",
+        new_callable=AsyncMock,
+        return_value={"messages": [AIMessage(content="Hola")]},
+    ) as mock_ainvoke:
+        await orch.process(telegram_id=99, user_message="hi", language="es")
+
+    call_args = mock_ainvoke.call_args
+    passed_messages = call_args[0][0]["messages"] if call_args[0] else call_args.kwargs["messages"]
+    human_msg = passed_messages[-1]
+    assert isinstance(human_msg, HumanMessage)
+    assert "[Respond in: Spanish]" in human_msg.content
+
+
+async def test_no_language_instruction_when_language_is_none(
+    fake_llm: FakeChatModel, fake_tools: list[BaseTool]
+) -> None:
+    """When language is None, no '[Respond in: ...]' instruction appears in the message."""
+    user_repo = FakeUserRepository()
+    orch = OrchestratorService(llm=fake_llm, tools=fake_tools, user_repo=user_repo)
+
+    with patch.object(
+        orch._agent,
+        "ainvoke",
+        new_callable=AsyncMock,
+        return_value={"messages": [AIMessage(content="Hello")]},
+    ) as mock_ainvoke:
+        await orch.process(telegram_id=99, user_message="hi", language=None)
+
+    call_args = mock_ainvoke.call_args
+    passed_messages = call_args[0][0]["messages"] if call_args[0] else call_args.kwargs["messages"]
+    human_msg = passed_messages[-1]
+    assert isinstance(human_msg, HumanMessage)
+    assert "[Respond in:" not in human_msg.content
+
+
+async def test_language_sets_request_context(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
+    """When language is provided, RequestContext.language reflects it."""
+    user_repo = FakeUserRepository()
+    orch = OrchestratorService(llm=fake_llm, tools=fake_tools, user_repo=user_repo)
+
+    captured_ctx = None
+
+    async def capture_context(*args: Any, **kwargs: Any) -> dict:
+        nonlocal captured_ctx
+        captured_ctx = get_context()
+        return {"messages": [AIMessage(content="ok")]}
+
+    with patch.object(orch._agent, "ainvoke", new_callable=AsyncMock, side_effect=capture_context):
+        await orch.process(telegram_id=99, user_message="hi", language="pt")
+
+    assert captured_ctx is not None
+    assert captured_ctx.language == "pt"
+
+
+async def test_language_defaults_to_en_when_none(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
+    """When language is None, RequestContext.language defaults to 'en'."""
+    user_repo = FakeUserRepository()
+    orch = OrchestratorService(llm=fake_llm, tools=fake_tools, user_repo=user_repo)
+
+    captured_ctx = None
+
+    async def capture_context(*args: Any, **kwargs: Any) -> dict:
+        nonlocal captured_ctx
+        captured_ctx = get_context()
+        return {"messages": [AIMessage(content="ok")]}
+
+    with patch.object(orch._agent, "ainvoke", new_callable=AsyncMock, side_effect=capture_context):
+        await orch.process(telegram_id=99, user_message="hi", language=None)
+
+    assert captured_ctx is not None
+    assert captured_ctx.language == "en"
+
+
+async def test_unknown_language_code_used_as_is(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
+    """When language code is not in the mapping, the raw code is used."""
+    user_repo = FakeUserRepository()
+    orch = OrchestratorService(llm=fake_llm, tools=fake_tools, user_repo=user_repo)
+
+    with patch.object(
+        orch._agent,
+        "ainvoke",
+        new_callable=AsyncMock,
+        return_value={"messages": [AIMessage(content="ok")]},
+    ) as mock_ainvoke:
+        await orch.process(telegram_id=99, user_message="hi", language="ja")
+
+    call_args = mock_ainvoke.call_args
+    passed_messages = call_args[0][0]["messages"] if call_args[0] else call_args.kwargs["messages"]
+    human_msg = passed_messages[-1]
+    assert "[Respond in: ja]" in human_msg.content
