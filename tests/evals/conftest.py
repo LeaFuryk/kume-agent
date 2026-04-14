@@ -27,6 +27,7 @@ def eval_orchestrator():
     from pydantic import SecretStr
 
     from kume.adapters.tools import (
+        AnalyzeFoodImageTool,
         AnalyzeFoodTool,
         AskRecommendationTool,
         FetchContextTool,
@@ -39,6 +40,7 @@ def eval_orchestrator():
     )
     from kume.adapters.tools.fetch_lab_results import FetchLabResultsTool
     from kume.domain.context import ContextBuilder
+    from kume.infrastructure.image_store import ImageStore
     from kume.services.orchestrator import OrchestratorService
 
     # Import fakes from the existing test conftest
@@ -51,6 +53,7 @@ def eval_orchestrator():
         FakeMealRepository,
         FakeRestrictionRepository,
         FakeUserRepository,
+        FakeVisionPort,
     )
 
     api_key = os.environ.get("OPENAI_API_KEY", "")
@@ -70,9 +73,12 @@ def eval_orchestrator():
     provider.get_recent_meals.return_value = []
     cb = ContextBuilder(provider=provider)
 
+    image_store = ImageStore()
+
     tools = [
         AskRecommendationTool(llm=tool_llm, context_builder=cb),
         AnalyzeFoodTool(llm=tool_llm, context_builder=cb),
+        AnalyzeFoodImageTool(vision=FakeVisionPort(), context_builder=cb, image_store=image_store),
         LogMealTool(meal_repo=FakeMealRepository()),
         RequestReportTool(),
         SaveGoalTool(goal_repo=FakeGoalRepository()),
@@ -88,6 +94,7 @@ def eval_orchestrator():
         tools=tools,
         max_iterations=5,
         user_repo=FakeUserRepository(),
+        image_store=image_store,
     )
 
 
