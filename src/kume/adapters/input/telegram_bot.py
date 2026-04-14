@@ -57,10 +57,16 @@ class TelegramBotAdapter:
             await self._batcher.add_text(telegram_id, chat_id, text, lang, user_name=user_name)
         else:
             logger.info("Received message from telegram_id=%d", telegram_id)
-            response = await self._orchestrator.process(
-                telegram_id, user_message=text, user_name=user_name, language=lang
+            result = await self._orchestrator.process(
+                telegram_id,
+                user_message=text,
+                user_name=user_name,
+                language=lang,
+                messaging=self._messaging,
+                chat_id=chat_id,
             )
-            await self._messaging.send_message(chat_id, response)
+            if not result.streamed:
+                await self._messaging.send_message(chat_id, result.text)
 
     async def handle_media(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         chat_id = update.effective_chat.id if update.effective_chat else 0
@@ -200,14 +206,17 @@ class TelegramBotAdapter:
                     )
 
             # ONE orchestrator call -> ONE response
-            response = await self._orchestrator.process(
+            result = await self._orchestrator.process(
                 telegram_id=telegram_id,
                 user_message=user_message,
                 user_name=batch.user_name,
                 resources=resources if resources else None,
                 language=lang,
+                messaging=self._messaging,
+                chat_id=chat_id,
             )
-            await self._messaging.send_message(chat_id, response)
+            if not result.streamed:
+                await self._messaging.send_message(chat_id, result.text)
 
         except Exception:
             logger.exception("Error processing batch for telegram_id=%d", telegram_id)
@@ -252,14 +261,17 @@ class TelegramBotAdapter:
         user_message = item.caption or ""
 
         try:
-            response = await self._orchestrator.process(
+            result = await self._orchestrator.process(
                 telegram_id=telegram_id,
                 user_message=user_message,
                 user_name=user_name,
                 resources=[resource],
                 language=lang,
+                messaging=self._messaging,
+                chat_id=chat_id,
             )
-            await self._messaging.send_message(chat_id, response)
+            if not result.streamed:
+                await self._messaging.send_message(chat_id, result.text)
         except Exception:
             logger.exception("Error in orchestrator for media message, telegram_id=%d", telegram_id)
             await self._messaging.send_message(chat_id, "Sorry, something went wrong. Please try again.")

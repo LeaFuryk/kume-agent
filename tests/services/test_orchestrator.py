@@ -15,7 +15,8 @@ from kume.infrastructure.image_store import ImageStore
 from kume.infrastructure.metrics import MetricsCallbackHandler, ReasoningCallbackHandler
 from kume.infrastructure.request_context import get_context
 from kume.infrastructure.session_store import SessionStore
-from kume.services.orchestrator import OrchestratorService, Resource, _extract_text_content
+from kume.ports.output.messaging import MessagingPort
+from kume.services.orchestrator import OrchestratorService, ProcessResult, Resource, _extract_text_content
 from tests.adapters.tools.conftest import FakeUserRepository
 
 
@@ -66,7 +67,7 @@ def orchestrator(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> Orchest
     )
 
 
-async def test_process_returns_string_response(orchestrator: OrchestratorService) -> None:
+async def test_process_returns_process_result(orchestrator: OrchestratorService) -> None:
     with patch.object(
         orchestrator._agent,
         "ainvoke",
@@ -75,8 +76,9 @@ async def test_process_returns_string_response(orchestrator: OrchestratorService
     ):
         result = await orchestrator.process(telegram_id=12345, user_message="What should I eat?")
 
-    assert isinstance(result, str)
-    assert result == "Here is your nutrition advice."
+    assert isinstance(result, ProcessResult)
+    assert result.text == "Here is your nutrition advice."
+    assert result.streamed is False
 
 
 async def test_process_returns_fallback_on_exception(orchestrator: OrchestratorService) -> None:
@@ -88,7 +90,8 @@ async def test_process_returns_fallback_on_exception(orchestrator: OrchestratorS
     ):
         result = await orchestrator.process(telegram_id=12345, user_message="Hello")
 
-    assert result == "Sorry, something went wrong. Please try again."
+    assert result.text == "Sorry, something went wrong. Please try again."
+    assert result.streamed is False
 
 
 async def test_process_passes_callback_handler(orchestrator: OrchestratorService) -> None:
@@ -118,7 +121,8 @@ async def test_process_returns_default_when_messages_empty(orchestrator: Orchest
     ):
         result = await orchestrator.process(telegram_id=1, user_message="test")
 
-    assert result == "I wasn't able to process that request."
+    assert result.text == "I wasn't able to process that request."
+    assert result.streamed is False
 
 
 async def test_process_returns_default_when_messages_key_missing(orchestrator: OrchestratorService) -> None:
@@ -130,7 +134,8 @@ async def test_process_returns_default_when_messages_key_missing(orchestrator: O
     ):
         result = await orchestrator.process(telegram_id=1, user_message="test")
 
-    assert result == "I wasn't able to process that request."
+    assert result.text == "I wasn't able to process that request."
+    assert result.streamed is False
 
 
 async def test_process_handles_structured_content_blocks(orchestrator: OrchestratorService) -> None:
@@ -144,8 +149,8 @@ async def test_process_handles_structured_content_blocks(orchestrator: Orchestra
     ):
         result = await orchestrator.process(telegram_id=1, user_message="test")
 
-    assert result == "Hello from structured block"
-    assert "[{" not in result
+    assert result.text == "Hello from structured block"
+    assert "[{" not in result.text
 
 
 async def test_process_sets_request_context_via_contextvar(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
@@ -299,7 +304,7 @@ async def test_images_set_and_cleared(fake_llm: FakeChatModel, fake_tools: list[
         mock_ainvoke.side_effect = check_images_set
         result = await orch.process(telegram_id=99, user_message="analyze", resources=resources)
 
-    assert result == "analyzed"
+    assert result.text == "analyzed"
     # After process() returns, images should be cleared
     assert len(image_store._data) == 0
 
@@ -326,7 +331,7 @@ async def test_images_cleared_on_exception(fake_llm: FakeChatModel, fake_tools: 
     ):
         result = await orch.process(telegram_id=1, user_message="test", resources=resources)
 
-    assert result == "Sorry, something went wrong. Please try again."
+    assert result.text == "Sorry, something went wrong. Please try again."
     # Images should still be cleared in the finally block
     assert len(image_store._data) == 0
 
@@ -341,7 +346,7 @@ async def test_backward_compat_no_stores(orchestrator: OrchestratorService) -> N
     ):
         result = await orchestrator.process(telegram_id=12345, user_message="hi there")
 
-    assert result == "works fine"
+    assert result.text == "works fine"
 
 
 # --- Language instruction tests ---
@@ -446,3 +451,108 @@ async def test_unknown_language_code_used_as_is(fake_llm: FakeChatModel, fake_to
     passed_messages = call_args[0][0]["messages"] if call_args[0] else call_args.kwargs["messages"]
     human_msg = passed_messages[-1]
     assert "[Respond in: ja]" in human_msg.content
+
+
+# --- Streaming integration tests ---
+
+
+@pytest.fixture()
+def mock_messaging() -> AsyncMock:
+    messaging = AsyncMock(spec=MessagingPort)
+    messaging.send_and_get_id.return_value = 42
+    return messaging
+
+
+async def test_streaming_sends_placeholder(orchestrator: OrchestratorService, mock_messaging: AsyncMock) -> None:
+    """Verify send_and_get_id is called when messaging+chat_id are provided."""
+    with patch.object(
+        orchestrator._agent,
+        "ainvoke",
+        new_callable=AsyncMock,
+        return_value={"messages": [AIMessage(content="streamed response")]},
+    ):
+        result = await orchestrator.process(telegram_id=1, user_message="test", messaging=mock_messaging, chat_id=99)
+
+    mock_messaging.send_and_get_id.assert_awaited_once_with(99, "...")
+    assert result.text == "streamed response"
+
+
+async def test_streaming_result_streamed_true(orchestrator: OrchestratorService, mock_messaging: AsyncMock) -> None:
+    """Verify result.streamed is True when streaming setup succeeds."""
+    with patch.object(
+        orchestrator._agent,
+        "ainvoke",
+        new_callable=AsyncMock,
+        return_value={"messages": [AIMessage(content="streamed response")]},
+    ):
+        result = await orchestrator.process(telegram_id=1, user_message="test", messaging=mock_messaging, chat_id=99)
+
+    assert result.streamed is True
+
+
+async def test_streaming_handler_in_callbacks(orchestrator: OrchestratorService, mock_messaging: AsyncMock) -> None:
+    """Verify StreamingCallbackHandler is added to the callbacks list."""
+    from kume.infrastructure.streaming import StreamingCallbackHandler
+
+    with patch.object(
+        orchestrator._agent,
+        "ainvoke",
+        new_callable=AsyncMock,
+        return_value={"messages": [AIMessage(content="ok")]},
+    ) as mock_ainvoke:
+        await orchestrator.process(telegram_id=1, user_message="test", messaging=mock_messaging, chat_id=99)
+
+    call_kwargs = mock_ainvoke.call_args
+    config = call_kwargs.kwargs.get("config") or call_kwargs[1].get("config")
+    callbacks = config["callbacks"]
+    assert len(callbacks) == 3
+    assert isinstance(callbacks[2], StreamingCallbackHandler)
+
+
+async def test_streaming_fallback_on_setup_failure(
+    orchestrator: OrchestratorService, mock_messaging: AsyncMock
+) -> None:
+    """When send_and_get_id raises, streaming is skipped and result.streamed is False."""
+    mock_messaging.send_and_get_id.side_effect = RuntimeError("Telegram API down")
+
+    with patch.object(
+        orchestrator._agent,
+        "ainvoke",
+        new_callable=AsyncMock,
+        return_value={"messages": [AIMessage(content="non-streamed")]},
+    ):
+        result = await orchestrator.process(telegram_id=1, user_message="test", messaging=mock_messaging, chat_id=99)
+
+    assert result.text == "non-streamed"
+    assert result.streamed is False
+
+
+async def test_no_streaming_when_no_messaging(orchestrator: OrchestratorService) -> None:
+    """Verify no streaming when messaging is None."""
+    with patch.object(
+        orchestrator._agent,
+        "ainvoke",
+        new_callable=AsyncMock,
+        return_value={"messages": [AIMessage(content="plain response")]},
+    ) as mock_ainvoke:
+        result = await orchestrator.process(telegram_id=1, user_message="test")
+
+    assert result.text == "plain response"
+    assert result.streamed is False
+    # Only 2 callbacks (metrics + reasoning), no streaming handler
+    config = mock_ainvoke.call_args.kwargs.get("config") or mock_ainvoke.call_args[1].get("config")
+    assert len(config["callbacks"]) == 2
+
+
+async def test_no_streaming_when_no_chat_id(orchestrator: OrchestratorService, mock_messaging: AsyncMock) -> None:
+    """Verify no streaming when chat_id is None even if messaging is provided."""
+    with patch.object(
+        orchestrator._agent,
+        "ainvoke",
+        new_callable=AsyncMock,
+        return_value={"messages": [AIMessage(content="no chat id")]},
+    ):
+        result = await orchestrator.process(telegram_id=1, user_message="test", messaging=mock_messaging, chat_id=None)
+
+    mock_messaging.send_and_get_id.assert_not_awaited()
+    assert result.streamed is False

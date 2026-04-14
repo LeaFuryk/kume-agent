@@ -22,6 +22,8 @@ from kume.infrastructure.request_context import (
     get_context as get_request_context,
 )
 from kume.infrastructure.session_store import SessionStore
+from kume.infrastructure.streaming import StreamingCallbackHandler
+from kume.ports.output.messaging import MessagingPort
 from kume.ports.output.repositories import UserRepository
 from kume.services.prompts import SYSTEM_PROMPT
 
@@ -33,6 +35,20 @@ class Resource:
     mime_type: str
     transcript: str
     raw_bytes: bytes | None = None  # kept for image tools that need the original
+
+
+@dataclass
+class ProcessResult:
+    """Return type for OrchestratorService.process().
+
+    Attributes:
+        text: The response text from the LLM agent.
+        streamed: True if the response was already delivered via streaming
+                  edits (the caller should NOT send it again).
+    """
+
+    text: str
+    streamed: bool = False
 
 
 def _extract_text_content(content: Any) -> str:
@@ -114,7 +130,10 @@ class OrchestratorService:
         user_name: str | None = None,
         resources: list[Resource] | None = None,
         language: str | None = None,
-    ) -> str:
+        # Streaming support
+        messaging: MessagingPort | None = None,
+        chat_id: int | None = None,
+    ) -> ProcessResult:
         """Process a user message through the agentic loop and return the response."""
         collector = MetricsCollector()
         collector.start_request(telegram_id, user_name=user_name)
@@ -209,10 +228,24 @@ class OrchestratorService:
         # Log user message for reasoning chain
         reasoning_handler.log_user_message(user_message or "(no text)", user_name)
 
+        # Set up streaming if messaging port is available
+        streaming_handler = None
+        message_id = None
+        if messaging and chat_id:
+            try:
+                message_id = await messaging.send_and_get_id(chat_id, "...")
+                streaming_handler = StreamingCallbackHandler(messaging, chat_id, message_id)
+            except Exception:
+                logger.warning("Failed to set up streaming, falling back to non-streaming", exc_info=True)
+
         try:
+            callbacks = [callback_handler, reasoning_handler]
+            if streaming_handler:
+                callbacks.append(streaming_handler)
+
             agent_input: dict[str, Any] = {"messages": messages}
             agent_config: dict[str, Any] = {
-                "callbacks": [callback_handler, reasoning_handler],
+                "callbacks": callbacks,
                 "recursion_limit": self._max_iterations * 2,
             }
             result = await self._agent.ainvoke(agent_input, config=agent_config)  # type: ignore[call-overload]
@@ -250,11 +283,12 @@ class OrchestratorService:
                                 created_at=now,
                             ),
                         )
-                    return response_text
-            return "I wasn't able to process that request."
+                    streamed = streaming_handler is not None and message_id is not None
+                    return ProcessResult(text=response_text, streamed=streamed)
+            return ProcessResult(text="I wasn't able to process that request.", streamed=False)
         except Exception:
             logger.exception("Error processing message for telegram_id=%d", telegram_id)
-            return "Sorry, something went wrong. Please try again."
+            return ProcessResult(text="Sorry, something went wrong. Please try again.", streamed=False)
         finally:
             if session_lock and lock_acquired:
                 session_lock.release()
