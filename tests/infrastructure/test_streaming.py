@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from unittest.mock import AsyncMock
 
@@ -117,3 +118,106 @@ class TestFullTextProperty:
         assert handler.full_text == "Hello world"
         assert "\u23f3" not in handler.full_text
         assert "\u25cd" not in handler.full_text
+
+
+# ── Edge-case tests ──────────────────────────────────────────────────
+
+
+class TestEmptyResponseNoFlush:
+    @pytest.mark.asyncio
+    async def test_empty_response_no_flush(self) -> None:
+        """No tokens means no edit_message calls."""
+        messaging, handler = _make_handler()
+        await handler.on_llm_end(response=None)
+        messaging.edit_message.assert_not_called()
+
+
+class TestLongMessageOver4096Chars:
+    @pytest.mark.asyncio
+    async def test_long_message_over_4096_chars(self) -> None:
+        """Messages over 4096 chars should still flush without error."""
+        messaging, handler = _make_handler()
+        long_text = "x" * 5000
+        await handler.on_llm_new_token(long_text)
+        await handler.on_llm_end(response=None)
+        # Should have attempted to flush (adapter/Telegram handles truncation)
+        assert messaging.edit_message.called
+        # full_text should contain all content
+        assert len(handler.full_text) == 5000
+
+
+class TestRapidBurstThrottling:
+    @pytest.mark.asyncio
+    async def test_rapid_burst_throttling(self) -> None:
+        """200 tokens in quick succession should result in far fewer edits."""
+        messaging, handler = _make_handler()
+        for _i in range(200):
+            await handler.on_llm_new_token("a")
+        await handler.on_llm_end(response=None)
+        # Should be significantly fewer edits than 200
+        # At minimum: some char-threshold flushes + final flush
+        assert messaging.edit_message.call_count < 50
+        assert handler.full_text == "a" * 200
+
+
+class TestConcurrentFlushSafety:
+    @pytest.mark.asyncio
+    async def test_concurrent_flushes_dont_corrupt(self) -> None:
+        """Multiple concurrent on_llm_new_token calls shouldn't corrupt the buffer."""
+        messaging, handler = _make_handler()
+
+        # Simulate concurrent token arrivals
+        tokens = [f"token{i} " for i in range(20)]
+        await asyncio.gather(*[handler.on_llm_new_token(t) for t in tokens])
+
+        # All tokens should be in the buffer
+        for t in tokens:
+            assert t in handler.full_text
+
+
+class TestToolInterleaving:
+    @pytest.mark.asyncio
+    async def test_tool_interleaving(self) -> None:
+        """Tool start/end during streaming should show status then resume cleanly."""
+        messaging, handler = _make_handler()
+
+        await handler.on_llm_new_token("Starting analysis")
+        await handler.on_tool_start({"name": "fetch_user_context"}, "query")
+        # Should have flushed with tool status
+        await handler.on_tool_end("context data")
+        await handler.on_llm_new_token(". Here are the results.")
+        await handler.on_llm_end(response=None)
+
+        assert handler.full_text == "Starting analysis. Here are the results."
+        # Tool status should NOT be in full_text
+        assert "fetch_user_context" not in handler.full_text
+
+
+class TestIdenticalContentSkipsEdit:
+    @pytest.mark.asyncio
+    async def test_identical_content_skips_edit(self) -> None:
+        """If buffer hasn't changed since last flush, skip the edit."""
+        messaging, handler = _make_handler()
+
+        await handler.on_llm_new_token("hello")
+        await handler._flush(cursor=False)
+        call_count_after_first = messaging.edit_message.call_count
+
+        # Flush again with same content
+        await handler._flush(cursor=False)
+        assert messaging.edit_message.call_count == call_count_after_first  # no new call
+
+
+class TestErrorRecovery:
+    @pytest.mark.asyncio
+    async def test_continues_after_edit_failure(self) -> None:
+        """If edit_message fails, subsequent tokens still accumulate."""
+        messaging, handler = _make_handler()
+        messaging.edit_message.side_effect = [Exception("network error"), None, None]
+
+        await handler.on_llm_new_token("first ")
+        await handler._flush(cursor=False)  # fails
+        await handler.on_llm_new_token("second")
+        await handler._flush(cursor=False)  # succeeds
+
+        assert handler.full_text == "first second"
