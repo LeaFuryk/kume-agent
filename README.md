@@ -213,6 +213,28 @@ alembic revision --autogenerate -m "description"
 uv run alembic upgrade head
 ```
 
+### LLM Evaluations
+
+Kume includes an eval framework for verifying LLM behavior: tool selection, intent classification (log vs analyze), and response quality. Eval cases are defined in YAML files under `tests/evals/cases/`.
+
+```bash
+# Validate eval cases load correctly (no API key needed)
+uv run pytest tests/evals/ -v
+
+# Run evals against real LLM (requires OPENAI_API_KEY)
+uv run pytest tests/evals/ -m eval -v
+
+# Run a specific eval suite
+uv run pytest tests/evals/test_tool_selection.py -m eval -v
+```
+
+**Current status:** The eval infrastructure (YAML loader, pytest marker, case definitions) is in place with 31 cases across 3 suites:
+- **Tool selection** (15 cases) — verifies correct tool dispatch for all 12 tools
+- **Intent classification** (10 cases) — verifies log vs analyze-only decisions
+- **Response quality** (6 cases) — criteria for LLM-as-judge scoring
+
+The actual LLM-calling eval runner (`run_eval` that sends messages through a real orchestrator and captures tool calls) is not yet implemented — cases currently validate YAML structure only. See the [Notion board](https://www.notion.so/33f7e505e99b80b1a9abf4c8b6980f22) for the task to build it.
+
 ## Roadmap
 
 - **Phase 1** — Telegram bot + basic responses ✅
