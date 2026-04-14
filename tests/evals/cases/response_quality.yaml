@@ -1,0 +1,42 @@
+cases:
+  - id: spanish_response
+    description: Spanish user should get Spanish response
+    input: "Qué puedo comer para bajar el colesterol?"
+    user_prefix: "[User: Carlos]"
+    expected_language: es
+    criteria: ["language_match", "conciseness", "accuracy"]
+
+  - id: returning_user_no_intro
+    description: Returning user should NOT get introduction
+    input: "What should I eat today?"
+    user_prefix: "[User: Ana]"
+    expected_language: en
+    criteria: ["no_introduction", "conciseness", "personalization"]
+
+  - id: first_time_user_intro
+    description: First-time user should get introduction
+    input: "Hello!"
+    user_prefix: ""
+    expected_language: en
+    criteria: ["has_introduction", "mentions_capabilities", "tone"]
+
+  - id: concise_nutrition_answer
+    description: Nutrition answer should be concise (3-5 lines)
+    input: "What foods are good for lowering triglycerides?"
+    user_prefix: "[User: Leo]"
+    expected_language: en
+    criteria: ["conciseness", "accuracy", "uses_bullet_list"]
+
+  - id: goal_saving_encouragement
+    description: Goal saving should be encouraging
+    input: "I want to lose 10kg"
+    user_prefix: "[User: Maria]"
+    expected_language: en
+    criteria: ["tone", "encouragement", "saves_data"]
+
+  - id: closure_followup
+    description: Closure message should ask gentle follow-up if missing context
+    input: "Thanks!"
+    user_prefix: ""
+    expected_language: en
+    criteria: ["gentle_followup", "tone"]
