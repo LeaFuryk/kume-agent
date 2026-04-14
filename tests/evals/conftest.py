@@ -3,6 +3,9 @@ from __future__ import annotations
 import os
 
 import pytest
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 # Auto-skip eval tests when no API key is available
