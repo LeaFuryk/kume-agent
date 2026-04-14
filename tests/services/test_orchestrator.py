@@ -490,23 +490,20 @@ async def test_streaming_result_streamed_true(orchestrator: OrchestratorService,
     assert result.streamed is True
 
 
-async def test_streaming_handler_in_callbacks(orchestrator: OrchestratorService, mock_messaging: AsyncMock) -> None:
-    """Verify StreamingCallbackHandler is added to the callbacks list."""
-    from kume.infrastructure.streaming import StreamingCallbackHandler
-
+async def test_placeholder_edited_with_response(orchestrator: OrchestratorService, mock_messaging: AsyncMock) -> None:
+    """Verify placeholder message is edited with the final response."""
     with patch.object(
         orchestrator._agent,
         "ainvoke",
         new_callable=AsyncMock,
-        return_value={"messages": [AIMessage(content="ok")]},
-    ) as mock_ainvoke:
-        await orchestrator.process(telegram_id=1, user_message="test", messaging=mock_messaging, chat_id=99)
+        return_value={"messages": [AIMessage(content="final answer")]},
+    ):
+        result = await orchestrator.process(telegram_id=1, user_message="test", messaging=mock_messaging, chat_id=99)
 
-    call_kwargs = mock_ainvoke.call_args
-    config = call_kwargs.kwargs.get("config") or call_kwargs[1].get("config")
-    callbacks = config["callbacks"]
-    assert len(callbacks) == 3
-    assert isinstance(callbacks[2], StreamingCallbackHandler)
+    # Placeholder sent, then edited with final response
+    mock_messaging.send_and_get_id.assert_awaited_once_with(99, "...")
+    mock_messaging.edit_message.assert_awaited_once_with(99, 42, "final answer")
+    assert result.streamed is True
 
 
 async def test_streaming_fallback_on_setup_failure(
