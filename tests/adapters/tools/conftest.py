@@ -146,6 +146,23 @@ class FakeVisionPort(VisionPort):
         }
         return self.response_text
 
+    async def analyze_image_json(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        image_bytes: bytes,
+        mime_type: str,
+        json_schema: dict,
+    ) -> str:
+        self.last_call = {
+            "system_prompt": system_prompt,
+            "user_prompt": user_prompt,
+            "image_bytes": image_bytes,
+            "mime_type": mime_type,
+            "json_schema": json_schema,
+        }
+        return self.response_text
+
 
 class FakeMealRepository(MealRepository):
     """A minimal MealRepository implementation for testing."""
