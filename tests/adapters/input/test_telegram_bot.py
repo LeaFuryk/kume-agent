@@ -9,7 +9,7 @@ from kume.adapters.input.status_messages import get_status_message
 from kume.adapters.input.telegram_bot import TelegramBotAdapter
 from kume.ports.output.messaging import MessagingPort
 from kume.services.ingestion import IngestionService, UnsupportedMediaType
-from kume.services.orchestrator import OrchestratorService
+from kume.services.orchestrator import OrchestratorService, ProcessResult
 
 # ---- Fixtures ----
 
@@ -316,7 +316,7 @@ async def test_process_batch_single_text(
     batch.chat_id = 67890
     batch.language = "en"
 
-    orchestrator.process.return_value = "Eat more vegetables!"
+    orchestrator.process.return_value = ProcessResult(text="Eat more vegetables!")
 
     await batch_adapter._process_batch(12345, batch)
 
@@ -326,8 +326,10 @@ async def test_process_batch_single_text(
         user_name=None,
         resources=None,
         language="en",
+        messaging=messaging,
+        chat_id=67890,
     )
-    # Single text: no status message, just the response
+    # Single text with streamed=False: response sent via send_message
     messaging.send_message.assert_awaited_once_with(67890, "Eat more vegetables!")
 
 
@@ -349,7 +351,7 @@ async def test_process_batch_single_pdf(
     batch.language = "en"
 
     ingestion.process.return_value = "Extracted: cholesterol 200mg/dL"
-    orchestrator.process.return_value = "Your cholesterol is within range."
+    orchestrator.process.return_value = ProcessResult(text="Your cholesterol is within range.")
 
     await batch_adapter._process_batch(12345, batch)
 
@@ -398,7 +400,7 @@ async def test_process_batch_multiple_pdfs_parallel(
     batch.language = "es"
 
     ingestion.process.side_effect = ["Extracted 1", "Extracted 2", "Extracted 3"]
-    orchestrator.process.return_value = "Comparative analysis..."
+    orchestrator.process.return_value = ProcessResult(text="Comparative analysis...")
 
     await batch_adapter._process_batch(12345, batch)
 
@@ -443,7 +445,7 @@ async def test_process_batch_mixed_text_and_pdf(
     batch.language = "es"
 
     ingestion.process.return_value = "cholesterol: 200"
-    orchestrator.process.return_value = "Tu colesterol está bien."
+    orchestrator.process.return_value = ProcessResult(text="Tu colesterol está bien.")
 
     await batch_adapter._process_batch(12345, batch)
 
@@ -481,7 +483,7 @@ async def test_process_batch_single_audio(
     batch.language = "en"
 
     ingestion.process.return_value = "I ate a salad for lunch"
-    orchestrator.process.return_value = "Great choice!"
+    orchestrator.process.return_value = ProcessResult(text="Great choice!")
 
     await batch_adapter._process_batch(12345, batch)
 
