@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 
 from langchain_core.tools import BaseTool
@@ -12,6 +13,51 @@ from kume.infrastructure.request_context import get_context
 from kume.ports.output.vision import VisionPort
 
 logger = logging.getLogger(__name__)
+
+_NUTRITION_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "food_description": {
+            "type": "string",
+            "description": "What the food appears to be with estimated portion",
+        },
+        "calories": {"type": "number", "description": "Estimated calories (kcal)"},
+        "protein_g": {"type": "number", "description": "Protein in grams"},
+        "carbs_g": {"type": "number", "description": "Carbohydrates in grams"},
+        "fat_g": {"type": "number", "description": "Total fat in grams"},
+        "fiber_g": {"type": "number", "description": "Fiber in grams"},
+        "sodium_mg": {"type": "number", "description": "Sodium in milligrams"},
+        "sugar_g": {"type": "number", "description": "Sugar in grams"},
+        "saturated_fat_g": {
+            "type": "number",
+            "description": "Saturated fat in grams",
+        },
+        "cholesterol_mg": {
+            "type": "number",
+            "description": "Cholesterol in milligrams",
+        },
+        "confidence": {"type": "number", "description": "Confidence score 0.0-1.0"},
+        "recommendation": {
+            "type": "string",
+            "description": "Brief health alignment note",
+        },
+    },
+    "required": [
+        "food_description",
+        "calories",
+        "protein_g",
+        "carbs_g",
+        "fat_g",
+        "fiber_g",
+        "sodium_mg",
+        "sugar_g",
+        "saturated_fat_g",
+        "cholesterol_mg",
+        "confidence",
+        "recommendation",
+    ],
+    "additionalProperties": False,
+}
 
 NUTRITION_PROMPT = """\
 You are a nutrition expert analyzing a food image.
@@ -87,12 +133,48 @@ class AnalyzeFoodImageTool(BaseTool):
         prompt = NUTRITION_PROMPT.format(context=context, description=description)
 
         try:
-            return await self.vision.analyze_image(
-                system_prompt="You are a nutrition expert analyzing food images.",
+            raw_json = await self.vision.analyze_image_json(
+                system_prompt="You are a nutrition expert. Analyze the food in this image and estimate nutritional content.",
                 user_prompt=prompt,
                 image_bytes=image_bytes,
                 mime_type=mime_type,
+                json_schema=_NUTRITION_SCHEMA,
             )
+            return _format_nutrition(raw_json)
         except Exception:
             logger.exception("Vision API call failed")
             return "Sorry, I couldn't analyze the image right now. Please try again."
+
+
+def _format_nutrition(raw_json: str) -> str:
+    """Format structured JSON nutrition data into a readable string."""
+    try:
+        data = json.loads(raw_json)
+    except json.JSONDecodeError:
+        return raw_json  # fallback: return raw text
+
+    lines = []
+    desc = data.get("food_description", "Unknown food")
+    confidence = data.get("confidence", 0)
+    lines.append(f"Food: {desc}")
+    lines.append(f"Confidence: {confidence:.0%}")
+    lines.append("")
+    lines.append(
+        f"Calories: {data.get('calories', 0):.0f} kcal | "
+        f"Protein: {data.get('protein_g', 0):.0f}g | "
+        f"Carbs: {data.get('carbs_g', 0):.0f}g | "
+        f"Fat: {data.get('fat_g', 0):.0f}g"
+    )
+    lines.append(
+        f"Fiber: {data.get('fiber_g', 0):.0f}g | "
+        f"Sugar: {data.get('sugar_g', 0):.0f}g | "
+        f"Sodium: {data.get('sodium_mg', 0):.0f}mg"
+    )
+    lines.append(
+        f"Saturated fat: {data.get('saturated_fat_g', 0):.0f}g | Cholesterol: {data.get('cholesterol_mg', 0):.0f}mg"
+    )
+    rec = data.get("recommendation", "")
+    if rec:
+        lines.append("")
+        lines.append(rec)
+    return "\n".join(lines)
