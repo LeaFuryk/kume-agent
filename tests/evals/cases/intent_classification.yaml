@@ -1,0 +1,65 @@
+cases:
+  # Analyze only — no logging
+  - id: analyze_only_healthy
+    description: User asks if food is healthy (question intent)
+    input: "Is this healthy?"
+    has_image: true
+    expected_tools: ["analyze_food_image"]
+    forbidden_tools: ["log_meal"]
+
+  - id: analyze_only_whats_in
+    description: User asks what's in the food
+    input: "What's in this?"
+    has_image: true
+    expected_tools: ["analyze_food_image"]
+    forbidden_tools: ["log_meal"]
+
+  - id: analyze_only_can_i_eat
+    description: User asks if they can eat something
+    input: "Can I eat this with my diet?"
+    has_image: true
+    expected_tools: ["analyze_food_image"]
+    forbidden_tools: ["log_meal"]
+
+  - id: analyze_only_calories
+    description: User asks about calories
+    input: "How many calories is this?"
+    has_image: true
+    expected_tools: ["analyze_food_image"]
+    forbidden_tools: ["log_meal"]
+
+  - id: analyze_only_text
+    description: Text-only food question
+    input: "Is sushi good for lowering cholesterol?"
+    expected_tools: ["analyze_food"]
+    forbidden_tools: ["log_meal"]
+
+  # Analyze + Log — record intent
+  - id: log_just_ate
+    description: User says they just ate this
+    input: "I just had this for lunch"
+    has_image: true
+    expected_tools: ["analyze_food_image"]
+
+  - id: log_dinner
+    description: User is logging dinner
+    input: "Logging my dinner"
+    has_image: true
+    expected_tools: ["analyze_food_image"]
+
+  - id: log_text_meal
+    description: User describes meal without image
+    input: "I had a grilled chicken salad for lunch"
+    expected_tools: ["log_meal"]
+    forbidden_tools: ["analyze_food_image"]
+
+  # Text-only meal logging
+  - id: log_text_eggs
+    description: Simple text meal log
+    input: "I ate two eggs and toast"
+    expected_tools: ["log_meal"]
+
+  - id: log_text_with_time
+    description: Meal with time reference
+    input: "I had pizza at noon"
+    expected_tools: ["log_meal"]
