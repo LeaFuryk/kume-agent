@@ -228,12 +228,12 @@ uv run pytest tests/evals/ -m eval -v
 uv run pytest tests/evals/test_tool_selection.py -m eval -v
 ```
 
-**Current status:** The eval infrastructure (YAML loader, pytest marker, case definitions) is in place with 31 cases across 3 suites:
+**31 eval cases across 3 suites:**
 - **Tool selection** (15 cases) — verifies correct tool dispatch for all 12 tools
 - **Intent classification** (10 cases) — verifies log vs analyze-only decisions
-- **Response quality** (6 cases) — criteria for LLM-as-judge scoring
+- **Response quality** (6 cases) — LLM-as-judge scoring on language, tone, conciseness
 
-The actual LLM-calling eval runner (`run_eval` that sends messages through a real orchestrator and captures tool calls) is not yet implemented — cases currently validate YAML structure only. See the [Notion board](https://www.notion.so/33f7e505e99b80b1a9abf4c8b6980f22) for the task to build it.
+Without `OPENAI_API_KEY`, only YAML structure validation runs. With the key, cases execute against a real LLM orchestrator and assert tool selection, intent decisions, and response quality scores (>= 3/5).
 
 ## Roadmap
 
