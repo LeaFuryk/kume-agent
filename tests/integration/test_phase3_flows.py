@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -236,3 +237,80 @@ def test_vision_port_contract() -> None:
     adapter = OpenAIVisionAdapter(api_key="fake-key")
     assert isinstance(adapter, VisionPort)
     assert hasattr(adapter, "analyze_image")
+
+
+# ---------------------------------------------------------------------------
+# Test 7 — Structured vision output end-to-end through tool
+# ---------------------------------------------------------------------------
+
+
+async def test_vision_structured_output_format() -> None:
+    """Wire a FakeVisionPort through AnalyzeFoodImageTool and verify formatted output."""
+    from kume.adapters.tools.analyze_food_image import AnalyzeFoodImageTool
+    from kume.infrastructure.request_context import RequestContext, set_context
+
+    set_context(RequestContext(user_id="u-integration", telegram_id=999))
+
+    nutrition_json = json.dumps(
+        {
+            "food_description": "Pasta with tomato sauce, ~250g",
+            "calories": 380,
+            "protein_g": 12,
+            "carbs_g": 65,
+            "fat_g": 8,
+            "fiber_g": 4,
+            "sodium_mg": 520,
+            "sugar_g": 8,
+            "saturated_fat_g": 2,
+            "cholesterol_mg": 15,
+            "confidence": 0.78,
+            "recommendation": "Consider adding protein to balance the meal.",
+        }
+    )
+
+    class _FakeVisionPort(VisionPort):
+        """Returns pre-built nutrition JSON for integration testing."""
+
+        async def analyze_image(
+            self,
+            system_prompt: str,
+            user_prompt: str,
+            image_bytes: bytes,
+            mime_type: str,
+        ) -> str:
+            return ""
+
+        async def analyze_image_json(
+            self,
+            system_prompt: str,
+            user_prompt: str,
+            image_bytes: bytes,
+            mime_type: str,
+            json_schema: dict,
+        ) -> str:
+            return nutrition_json
+
+    image_store = ImageStore()
+    image_store.set_images("req-integration", [b"fake-image"])
+
+    tool = AnalyzeFoodImageTool(
+        vision=_FakeVisionPort(),
+        image_store=image_store,
+        context_builder=None,
+    )
+
+    result = await tool._arun(description="What's in my pasta?", image_index=1)
+
+    # Verify structured output was formatted with labeled values
+    assert "Food: Pasta with tomato sauce" in result
+    assert "Confidence: 78%" in result
+    assert "Calories: 380 kcal" in result
+    assert "Protein: 12g" in result
+    assert "Carbs: 65g" in result
+    assert "Fat: 8g" in result
+    assert "Fiber: 4g" in result
+    assert "Sugar: 8g" in result
+    assert "Sodium: 520mg" in result
+    assert "Saturated fat: 2g" in result
+    assert "Cholesterol: 15mg" in result
+    assert "Consider adding protein" in result
