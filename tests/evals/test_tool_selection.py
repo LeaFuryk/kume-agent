@@ -1,5 +1,7 @@
-import pytest
 from pathlib import Path
+
+import pytest
+
 from tests.evals.helpers import load_cases
 
 CASES = load_cases(Path(__file__).parent / "cases" / "tool_selection.yaml")
