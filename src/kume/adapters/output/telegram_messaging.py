@@ -24,6 +24,30 @@ class TelegramMessagingAdapter(MessagingPort):
                 plain = _strip_html(chunk)
                 await self._bot.send_message(chat_id=chat_id, text=plain)
 
+    async def send_and_get_id(self, chat_id: int, text: str) -> int:
+        formatted = markdown_to_telegram_html(text)
+        result = await self._bot.send_message(chat_id=chat_id, text=formatted, parse_mode=ParseMode.HTML)
+        return result.message_id
+
+    async def edit_message(self, chat_id: int, message_id: int, text: str) -> None:
+        formatted = markdown_to_telegram_html(text)
+        try:
+            if _is_valid_html(formatted):
+                await self._bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=formatted,
+                    parse_mode=ParseMode.HTML,
+                )
+            else:
+                plain = _strip_html(formatted)
+                await self._bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=plain)
+        except Exception as e:
+            # Telegram raises BadRequest for "message is not modified" — swallow it
+            if "message is not modified" in str(e).lower():
+                return
+            raise
+
 
 def _split_message(text: str, max_length: int = TELEGRAM_MAX_MESSAGE_LENGTH) -> list[str]:
     """Split a message into chunks that fit within Telegram's message length limit."""
