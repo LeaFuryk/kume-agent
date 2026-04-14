@@ -1,0 +1,10 @@
+cases:
+  - id: greeting_no_tool
+    description: Simple greeting should not call any tool
+    input: "Hello!"
+    expected_tools: []
+
+  - id: nutrition_question_uses_tool
+    description: Nutrition question should call ask_recommendation
+    input: "What should I eat for breakfast?"
+    expected_tools: ["ask_recommendation"]
