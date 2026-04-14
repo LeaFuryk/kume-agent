@@ -18,12 +18,8 @@ def test_quality_cases_well_formed(case):
 
 @pytest.mark.eval
 @pytest.mark.parametrize("case", CASES, ids=[c.id for c in CASES])
-async def test_response_quality_llm(case, eval_orchestrator, eval_llm):
-    """Run each case through the real LLM, then score with LLM-as-judge.
-
-    Each criterion must score >= 3 out of 5.
-    Cost: ~$0.01 per case (orchestrator call + judge call).
-    """
+async def test_response_quality_llm(case, eval_orchestrator, eval_llm, cost_tracker):
+    """Run each case through the real LLM, then score with LLM-as-judge."""
     result = await run_eval(
         eval_orchestrator,
         user_message=case.input,
@@ -38,7 +34,14 @@ async def test_response_quality_llm(case, eval_orchestrator, eval_llm):
         expected_language=case.expected_language,
     )
 
-    # Report scores for debugging
+    cost_tracker.record(
+        f"quality/{case.id}",
+        result.cost_usd,
+        result.input_tokens,
+        result.output_tokens,
+        result.model,
+    )
+
     score_report = " | ".join(f"{k}: {v}/5" for k, v in scores.items())
     print(f"\n  [{case.id}] Scores: {score_report}")
 

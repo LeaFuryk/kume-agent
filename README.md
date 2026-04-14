@@ -224,6 +224,9 @@ uv run pytest tests/evals/ -v
 # Run evals against real LLM (requires OPENAI_API_KEY)
 uv run pytest tests/evals/ -m eval -v
 
+# Run with a different model (A/B testing)
+EVAL_MODEL=gpt-5-mini uv run pytest tests/evals/ -m eval -v
+
 # Run a specific eval suite
 uv run pytest tests/evals/test_tool_selection.py -m eval -v
 ```

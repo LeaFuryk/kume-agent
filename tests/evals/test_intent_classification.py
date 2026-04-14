@@ -21,12 +21,8 @@ def test_case_well_formed(case):
 
 @pytest.mark.eval
 @pytest.mark.parametrize("case", CASES, ids=[c.id for c in CASES])
-async def test_intent_classification_llm(case, eval_orchestrator):
-    """Run each case through the real LLM and verify intent decisions.
-
-    For image cases, simulates an attached image resource.
-    Target: >= 80% pass rate.
-    """
+async def test_intent_classification_llm(case, eval_orchestrator, cost_tracker):
+    """Run each case through the real LLM and verify intent decisions."""
     resources = None
     if case.has_image:
         resources = [
@@ -42,6 +38,14 @@ async def test_intent_classification_llm(case, eval_orchestrator):
         user_message=case.input,
         user_prefix=case.user_prefix,
         resources=resources,
+    )
+
+    cost_tracker.record(
+        f"intent/{case.id}",
+        result.cost_usd,
+        result.input_tokens,
+        result.output_tokens,
+        result.model,
     )
 
     for tool in case.expected_tools:

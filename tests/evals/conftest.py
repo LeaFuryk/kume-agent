@@ -7,6 +7,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Env-configurable model for A/B testing: EVAL_MODEL=gpt-5-mini uv run pytest tests/evals/ -m eval -v
+EVAL_MODEL = os.environ.get("EVAL_MODEL", "gpt-4o-mini")
+
 
 # Auto-skip eval tests when no API key is available
 def pytest_collection_modifyitems(config, items):  # type: ignore[no-untyped-def]
@@ -17,11 +20,87 @@ def pytest_collection_modifyitems(config, items):  # type: ignore[no-untyped-def
                 item.add_marker(skip_marker)
 
 
+# ---------------------------------------------------------------------------
+# Cost tracker — collects costs across all eval tests, prints summary at end
+# ---------------------------------------------------------------------------
+
+
+class _CostTracker:
+    def __init__(self) -> None:
+        self.entries: list[dict[str, object]] = []
+        self.model: str = ""
+
+    def record(self, test_name: str, cost_usd: float, input_tokens: int, output_tokens: int, model: str) -> None:
+        if model:
+            self.model = model
+        self.entries.append(
+            {
+                "test": test_name,
+                "cost": cost_usd,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+            }
+        )
+
+    @property
+    def total_cost(self) -> float:
+        return sum(float(e["cost"]) for e in self.entries)
+
+    @property
+    def total_input_tokens(self) -> int:
+        return sum(int(e["input_tokens"]) for e in self.entries)
+
+    @property
+    def total_output_tokens(self) -> int:
+        return sum(int(e["output_tokens"]) for e in self.entries)
+
+
+_tracker = _CostTracker()
+
+
+@pytest.fixture
+def cost_tracker() -> _CostTracker:
+    return _tracker
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):  # type: ignore[no-untyped-def]
+    """Print eval cost summary at the end of the test run."""
+    if not _tracker.entries:
+        return
+
+    terminalreporter.section("Eval Cost Summary")
+    terminalreporter.write_line(f"Model: {_tracker.model or EVAL_MODEL}")
+    terminalreporter.write_line(f"Total tests: {len(_tracker.entries)}")
+    terminalreporter.write_line(f"Total input tokens: {_tracker.total_input_tokens:,}")
+    terminalreporter.write_line(f"Total output tokens: {_tracker.total_output_tokens:,}")
+    terminalreporter.write_line(f"Total cost: ${_tracker.total_cost:.4f}")
+    terminalreporter.write_line("")
+
+    # Per-test breakdown
+    terminalreporter.write_line(f"{'Test':<60} {'Tokens':>12} {'Cost':>10}")
+    terminalreporter.write_line("-" * 84)
+    for entry in _tracker.entries:
+        name = str(entry["test"])
+        if len(name) > 58:
+            name = name[:55] + "..."
+        tokens = f"{entry['input_tokens']}+{entry['output_tokens']}"
+        terminalreporter.write_line(f"{name:<60} {tokens:>12} ${float(entry['cost']):.4f}")
+    terminalreporter.write_line("-" * 84)
+    terminalreporter.write_line(
+        f"{'TOTAL':<60} {_tracker.total_input_tokens}+{_tracker.total_output_tokens:>5} ${_tracker.total_cost:.4f}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
 @pytest.fixture
 def eval_orchestrator():
     """Build a real orchestrator with ChatOpenAI + stub repos for evals.
 
-    Only usable when OPENAI_API_KEY is set (eval-marked tests auto-skip otherwise).
+    Model is configurable via EVAL_MODEL env var (default: gpt-4o-mini).
     """
     from langchain_openai import ChatOpenAI
     from pydantic import SecretStr
@@ -42,8 +121,6 @@ def eval_orchestrator():
     from kume.domain.context import ContextBuilder
     from kume.infrastructure.image_store import ImageStore
     from kume.services.orchestrator import OrchestratorService
-
-    # Import fakes from the existing test conftest
     from tests.adapters.tools.conftest import (
         FakeDocumentRepository,
         FakeEmbeddingRepository,
@@ -57,10 +134,9 @@ def eval_orchestrator():
     )
 
     api_key = os.environ.get("OPENAI_API_KEY", "")
-    llm = ChatOpenAI(model="gpt-4o-mini", api_key=SecretStr(api_key), max_retries=3)
+    llm = ChatOpenAI(model=EVAL_MODEL, api_key=SecretStr(api_key), max_retries=3)
     tool_llm = FakeLLMPort("stub response")
 
-    # Stub context builder (no real DB)
     from unittest.mock import AsyncMock
 
     from kume.domain.context import ContextDataProvider
@@ -105,4 +181,4 @@ def eval_llm():
     from pydantic import SecretStr
 
     api_key = os.environ.get("OPENAI_API_KEY", "")
-    return ChatOpenAI(model="gpt-4o-mini", api_key=SecretStr(api_key), max_retries=3)
+    return ChatOpenAI(model=EVAL_MODEL, api_key=SecretStr(api_key), max_retries=3)

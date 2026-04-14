@@ -20,37 +20,29 @@ def test_tool_selection_cases_well_formed(case):
 
 @pytest.mark.eval
 @pytest.mark.parametrize("case", CASES, ids=[c.id for c in CASES])
-async def test_tool_selection_llm(case, eval_orchestrator):
-    """Run each case through the real LLM and verify tool selection.
-
-    For cases with multiple expected_tools:
-    - If the case is a multi-tool case (like save_goal + save_restriction),
-      ALL must be called.
-    - If the tools are alternatives (like fetch_lab_results OR fetch_user_context),
-      AT LEAST ONE must be called.
-
-    We detect alternatives by checking if it's a "no expected tools" case or
-    a case where tools serve different purposes (save vs fetch).
-    Target: >= 80% pass rate.
-    """
+async def test_tool_selection_llm(case, eval_orchestrator, cost_tracker):
+    """Run each case through the real LLM and verify tool selection."""
     result: EvalResult = await run_eval(
         eval_orchestrator,
         user_message=case.input,
         user_prefix=case.user_prefix,
     )
 
-    if not case.expected_tools:
-        # No tool expected — verify none called (except forbidden check below)
-        pass
-    else:
-        # At least one expected tool must have been called
+    cost_tracker.record(
+        f"tool_selection/{case.id}",
+        result.cost_usd,
+        result.input_tokens,
+        result.output_tokens,
+        result.model,
+    )
+
+    if case.expected_tools:
         called = set(result.tool_calls)
         expected = set(case.expected_tools)
         assert called & expected, (
             f"[{case.id}] None of the expected tools {case.expected_tools} were called. Actual: {result.tool_calls}"
         )
 
-    # Check forbidden tools were NOT called
     for tool in case.forbidden_tools:
         assert tool not in result.tool_calls, (
             f"[{case.id}] Forbidden tool '{tool}' was called. Actual: {result.tool_calls}"
