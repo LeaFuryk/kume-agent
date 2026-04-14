@@ -21,6 +21,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "aiosqlite>=0.20",
+    "pyyaml>=6.0",
     "pytest>=8.0",
     "pytest-cov>=6.0",
     "pytest-asyncio>=0.24",
@@ -40,6 +41,7 @@ ignore = ["E501", "SIM108", "SIM105", "SIM102", "UP042"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = ["eval: LLM evaluation tests (require real API calls, run on-demand only)"]
 
 [tool.mypy]
 python_version = "3.11"
