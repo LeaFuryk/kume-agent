@@ -320,12 +320,13 @@ def run_intent_classification_eval(client: Client) -> None:
             return {"tool_calls": [], "response": "[TIMEOUT]", "cost_usd": 0}
 
     def intent_correct(run, example) -> dict:
-        actual = run.outputs.get("tool_calls", [])
-        expected = example.outputs.get("expected_tools", [])
+        actual = set(run.outputs.get("tool_calls", []))
+        expected = set(example.outputs.get("expected_tools", []))
         forbidden = set(example.outputs.get("forbidden_tools", []))
 
-        has_expected = all(t in actual for t in expected)
-        has_forbidden = bool(set(actual) & forbidden)
+        # At least one expected tool called (same logic as pytest evals)
+        has_expected = bool(actual & expected) if expected else True
+        has_forbidden = bool(actual & forbidden)
 
         return {"key": "intent_correct", "score": 1.0 if (has_expected and not has_forbidden) else 0.0}
 

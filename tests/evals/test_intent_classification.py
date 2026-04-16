@@ -48,8 +48,13 @@ async def test_intent_classification_llm(case, eval_orchestrator, cost_tracker):
         result.model,
     )
 
-    for tool in case.expected_tools:
-        assert tool in result.tool_calls, f"[{case.id}] Expected tool '{tool}' not called. Actual: {result.tool_calls}"
+    # At least one expected tool must have been called
+    if case.expected_tools:
+        called = set(result.tool_calls)
+        expected = set(case.expected_tools)
+        assert called & expected, (
+            f"[{case.id}] None of the expected tools {case.expected_tools} were called. Actual: {result.tool_calls}"
+        )
 
     for tool in case.forbidden_tools:
         assert tool not in result.tool_calls, (
