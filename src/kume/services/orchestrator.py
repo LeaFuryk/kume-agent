@@ -22,7 +22,6 @@ from kume.infrastructure.request_context import (
     get_context as get_request_context,
 )
 from kume.infrastructure.session_store import SessionStore
-from kume.infrastructure.streaming import StreamingCallbackHandler
 from kume.ports.output.messaging import MessagingPort
 from kume.ports.output.repositories import UserRepository
 from kume.services.prompts import SYSTEM_PROMPT
@@ -228,20 +227,18 @@ class OrchestratorService:
         # Log user message for reasoning chain
         reasoning_handler.log_user_message(user_message or "(no text)", user_name)
 
-        # Set up streaming if messaging port is available
-        streaming_handler = None
-        message_id = None
+        # Send a "thinking" placeholder if messaging is available.
+        # After ainvoke completes, we edit the placeholder with the final response.
+        # (True token-by-token streaming requires astream, which is a future enhancement.)
+        placeholder_message_id: int | None = None
         if messaging and chat_id:
             try:
-                message_id = await messaging.send_and_get_id(chat_id, "...")
-                streaming_handler = StreamingCallbackHandler(messaging, chat_id, message_id)
+                placeholder_message_id = await messaging.send_and_get_id(chat_id, "...")
             except Exception:
-                logger.warning("Failed to set up streaming, falling back to non-streaming", exc_info=True)
+                logger.warning("Failed to send placeholder, will send response normally", exc_info=True)
 
         try:
             callbacks = [callback_handler, reasoning_handler]
-            if streaming_handler:
-                callbacks.append(streaming_handler)
 
             agent_input: dict[str, Any] = {"messages": messages}
             agent_config: dict[str, Any] = {
@@ -283,7 +280,14 @@ class OrchestratorService:
                                 created_at=now,
                             ),
                         )
-                    streamed = streaming_handler is not None and message_id is not None
+                    # Edit the placeholder with the final response
+                    streamed = False
+                    if placeholder_message_id and messaging and chat_id:
+                        try:
+                            await messaging.edit_message(chat_id, placeholder_message_id, response_text)
+                            streamed = True
+                        except Exception:
+                            logger.warning("Failed to edit placeholder, will send as new message", exc_info=True)
                     return ProcessResult(text=response_text, streamed=streamed)
             return ProcessResult(text="I wasn't able to process that request.", streamed=False)
         except Exception:
