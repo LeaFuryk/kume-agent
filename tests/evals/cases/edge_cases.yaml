@@ -1,0 +1,62 @@
+cases:
+  # --- Error recovery / graceful handling ---
+
+  - id: non_food_as_meal
+    description: Non-food statement should NOT be logged as a meal
+    input: "I had a meeting at noon"
+    expected_tools: []
+    forbidden_tools: ["log_meal", "analyze_food", "analyze_food_image"]
+
+  - id: conflicting_restriction
+    description: User sends conflicting info — should save what they say
+    input: "I'm vegan but I want to log my steak dinner"
+    expected_tools: ["log_meal"]
+
+  - id: unsupported_action
+    description: User asks to delete data (not supported)
+    input: "Delete all my saved goals"
+    expected_tools: []
+    forbidden_tools: ["save_goal", "save_restriction"]
+
+  - id: gibberish_input
+    description: Random gibberish should not trigger any tools
+    input: "asdfkjh 234lk jsd8f9 sdjf"
+    expected_tools: []
+    forbidden_tools: ["save_goal", "save_restriction", "log_meal", "save_health_context"]
+
+  - id: very_long_food_name
+    description: Long food description should still work
+    input: "Log my meal: I had a large Mediterranean quinoa bowl with grilled chicken, roasted red peppers, kalamata olives, feta cheese, cucumber, cherry tomatoes, and tahini dressing"
+    expected_tools: ["log_meal"]
+
+  # --- Multiple items in one message ---
+
+  - id: multiple_restrictions
+    description: User mentions multiple restrictions in one message
+    input: "I'm lactose intolerant and allergic to shellfish"
+    expected_tools: ["save_restriction"]
+
+  - id: goal_plus_question
+    description: User sets goal and asks question in same message
+    input: "My goal is to lower cholesterol. What should I eat for dinner?"
+    expected_tools: ["save_goal"]
+
+  # --- Boundary between tools ---
+
+  - id: food_question_not_meal
+    description: Asking about food nutritionally is NOT a meal log
+    input: "How healthy is brown rice?"
+    expected_tools: ["analyze_food", "ask_recommendation"]
+    forbidden_tools: ["log_meal"]
+
+  - id: past_tense_is_meal
+    description: Past tense food description IS a meal log
+    input: "I ate a banana and yogurt for a snack, log it"
+    expected_tools: ["log_meal"]
+    forbidden_tools: ["analyze_food_image"]
+
+  - id: future_tense_not_meal
+    description: Future tense should NOT log a meal
+    input: "I'm thinking about having pasta tonight"
+    expected_tools: ["analyze_food", "ask_recommendation"]
+    forbidden_tools: ["log_meal"]
