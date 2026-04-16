@@ -212,6 +212,18 @@ def _build_orchestrator():  # type: ignore[no-untyped-def]
     )
 
 
+EVAL_TIMEOUT = 30  # seconds per case — prevents stuck agent loops
+
+
+def _run_with_timeout(coro):  # type: ignore[no-untyped-def]
+    """Run an async coroutine with a timeout. Returns the result or raises TimeoutError."""
+
+    async def _wrapped():  # type: ignore[no-untyped-def]
+        return await asyncio.wait_for(coro, timeout=EVAL_TIMEOUT)
+
+    return asyncio.run(_wrapped())
+
+
 # ---------------------------------------------------------------------------
 # Run evals via langsmith.evaluate()
 # ---------------------------------------------------------------------------
@@ -226,20 +238,23 @@ def run_tool_selection_eval(client: Client) -> None:
     orchestrator = _build_orchestrator()
 
     def target(inputs: dict) -> dict:
-        result = asyncio.run(
-            run_eval(
-                orchestrator,
-                user_message=inputs["user_message"],
-                user_prefix=inputs.get("user_prefix", ""),
+        try:
+            result = _run_with_timeout(
+                run_eval(
+                    orchestrator,
+                    user_message=inputs["user_message"],
+                    user_prefix=inputs.get("user_prefix", ""),
+                )
             )
-        )
-        return {
-            "tool_calls": result.tool_calls,
-            "response": result.response_text,
-            "cost_usd": result.cost_usd,
-            "input_tokens": result.input_tokens,
-            "output_tokens": result.output_tokens,
-        }
+            return {
+                "tool_calls": result.tool_calls,
+                "response": result.response_text,
+                "cost_usd": result.cost_usd,
+                "input_tokens": result.input_tokens,
+                "output_tokens": result.output_tokens,
+            }
+        except TimeoutError:
+            return {"tool_calls": [], "response": "[TIMEOUT]", "cost_usd": 0, "input_tokens": 0, "output_tokens": 0}
 
     def tool_selection_correct(run, example) -> dict:
         actual = set(run.outputs.get("tool_calls", []))
@@ -287,19 +302,22 @@ def run_intent_classification_eval(client: Client) -> None:
                     raw_bytes=b"fake-image",
                 )
             ]
-        result = asyncio.run(
-            run_eval(
-                orchestrator,
-                user_message=inputs["user_message"],
-                user_prefix=inputs.get("user_prefix", ""),
-                resources=resources,
+        try:
+            result = _run_with_timeout(
+                run_eval(
+                    orchestrator,
+                    user_message=inputs["user_message"],
+                    user_prefix=inputs.get("user_prefix", ""),
+                    resources=resources,
+                )
             )
-        )
-        return {
-            "tool_calls": result.tool_calls,
-            "response": result.response_text,
-            "cost_usd": result.cost_usd,
-        }
+            return {
+                "tool_calls": result.tool_calls,
+                "response": result.response_text,
+                "cost_usd": result.cost_usd,
+            }
+        except TimeoutError:
+            return {"tool_calls": [], "response": "[TIMEOUT]", "cost_usd": 0}
 
     def intent_correct(run, example) -> dict:
         actual = run.outputs.get("tool_calls", [])
@@ -340,17 +358,20 @@ def run_response_quality_eval(client: Client) -> None:
     )
 
     def target(inputs: dict) -> dict:
-        result = asyncio.run(
-            run_eval(
-                orchestrator,
-                user_message=inputs["user_message"],
-                user_prefix=inputs.get("user_prefix", ""),
+        try:
+            result = _run_with_timeout(
+                run_eval(
+                    orchestrator,
+                    user_message=inputs["user_message"],
+                    user_prefix=inputs.get("user_prefix", ""),
+                )
             )
-        )
-        return {
-            "response": result.response_text,
-            "cost_usd": result.cost_usd,
-        }
+            return {
+                "response": result.response_text,
+                "cost_usd": result.cost_usd,
+            }
+        except TimeoutError:
+            return {"response": "[TIMEOUT]", "cost_usd": 0}
 
     def quality_score(run, example) -> list[dict]:
         criteria = example.outputs.get("criteria", [])
