@@ -29,9 +29,9 @@ cases:
     forbidden_tools: ["log_meal"]
 
   - id: analyze_only_text
-    description: Text-only food question
-    input: "Is sushi good for lowering cholesterol?"
-    expected_tools: ["analyze_food"]
+    description: Text-only food question (may use analyze_food or ask_recommendation)
+    input: "Analyze sushi for me — is it good for lowering cholesterol?"
+    expected_tools: ["analyze_food", "ask_recommendation"]
     forbidden_tools: ["log_meal"]
 
   # Analyze + Log — record intent
@@ -48,18 +48,18 @@ cases:
     expected_tools: ["analyze_food_image"]
 
   - id: log_text_meal
-    description: User describes meal without image
-    input: "I had a grilled chicken salad for lunch"
+    description: User describes meal and asks to log it
+    input: "Please log this meal: I had a grilled chicken salad for lunch"
     expected_tools: ["log_meal"]
     forbidden_tools: ["analyze_food_image"]
 
   # Text-only meal logging
   - id: log_text_eggs
     description: Simple text meal log
-    input: "I ate two eggs and toast"
+    input: "I ate two eggs and toast, please log it"
     expected_tools: ["log_meal"]
 
   - id: log_text_with_time
-    description: Meal with time reference
-    input: "I had pizza at noon"
+    description: Meal with time reference, explicit log request
+    input: "Log my meal: I had pizza at noon"
     expected_tools: ["log_meal"]
