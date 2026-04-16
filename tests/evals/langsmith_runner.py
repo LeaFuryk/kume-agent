@@ -26,6 +26,7 @@ load_dotenv()
 
 from langsmith import Client  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tests.evals.helpers import load_cases, load_quality_cases  # noqa: E402
 
 EVAL_MODEL = os.environ.get("EVAL_MODEL", "gpt-4o-mini")
