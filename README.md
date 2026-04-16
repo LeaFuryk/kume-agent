@@ -161,10 +161,18 @@ Optional (with defaults):
 ```
 ORCHESTRATOR_MODEL=gpt-4o
 TOOL_MODEL=gpt-4o-mini
+VISION_MODEL=gpt-4o
 DATABASE_URL=postgresql+asyncpg://kume:kume@localhost:5432/kume
 MAX_AGENT_ITERATIONS=5
 LOG_FORMAT=pretty
 LOG_LEVEL=INFO
+```
+
+Optional (LangSmith observability):
+```
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=your-langsmith-api-key
+LANGCHAIN_PROJECT=kume
 ```
 
 ### Run
@@ -237,6 +245,21 @@ uv run pytest tests/evals/test_tool_selection.py -m eval -v
 - **Response quality** (6 cases) — LLM-as-judge scoring on language, tone, conciseness
 
 Without `OPENAI_API_KEY`, only YAML structure validation runs. With the key, cases execute against a real LLM orchestrator and assert tool selection, intent decisions, and response quality scores (>= 3/5).
+
+### LangSmith Observability
+
+Kume supports [LangSmith](https://smith.langchain.com) for tracing, debugging, and monitoring LLM calls in production.
+
+**Setup:** Add `LANGCHAIN_TRACING_V2=true`, `LANGCHAIN_API_KEY`, and `LANGCHAIN_PROJECT=kume` to your `.env`. That's it — LangChain auto-traces every agent call.
+
+**What you get:**
+- Visual trace timeline for every request (system prompt → tool calls → response)
+- Token usage, latency, and cost per LLM call
+- Tool call arguments and results
+- Error traces for debugging failures
+- Free tier: 5,000 traces/month
+
+**Dashboard:** Visit [smith.langchain.com](https://smith.langchain.com) to view traces after sending messages to the bot.
 
 ## Roadmap
 
