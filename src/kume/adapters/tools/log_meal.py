@@ -33,8 +33,10 @@ class LogMealTool(BaseTool):
 
     name: str = "log_meal"
     description: str = (
-        "Record a meal with nutritional details for tracking. Estimate all macro/micro values. "
-        "Example: 'I had 2 slices of pizza' → log_meal(description='2 slices pizza', calories=550, ...)"
+        "Record a meal with estimated nutritional details for tracking. "
+        "Use this DIRECTLY when the user describes a meal in text (no image needed). "
+        "Estimate all values yourself. "
+        "Example: 'I had pizza for lunch' → log_meal(description='pizza', calories=285, protein_g=12, ...)"
     )
     args_schema: type[BaseModel] = LogMealInput
     meal_repo: MealRepository = Field(exclude=True)

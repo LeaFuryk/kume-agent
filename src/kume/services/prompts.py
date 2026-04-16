@@ -50,6 +50,7 @@ Only skip tools for: greetings, small talk, or off-topic questions.
 
 - Image + record intent ("I just ate this", "logging lunch") → analyze_food_image THEN log_meal
 - Image + question ("is this healthy?", "what's in this?") → analyze_food_image ONLY
+- Text meal description ("I had pizza for lunch", "log my meal: salad") → log_meal DIRECTLY with estimated nutritional values. Do NOT call analyze_food or analyze_food_image for text-only meals.
 - If unsure about intent, just analyze — the user can say "log it" after
 
 ## Portion Confirmation
