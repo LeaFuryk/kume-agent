@@ -261,6 +261,18 @@ Kume supports [LangSmith](https://smith.langchain.com) for tracing, debugging, a
 
 **Dashboard:** Visit [smith.langchain.com](https://smith.langchain.com) to view traces after sending messages to the bot.
 
+**Run evals in LangSmith** (results with pass/fail in the dashboard):
+```bash
+# Upload datasets + run all evals
+uv run python tests/evals/langsmith_runner.py
+
+# Run with a different model
+EVAL_MODEL=gpt-5-mini uv run python tests/evals/langsmith_runner.py
+
+# Only upload datasets (no eval run)
+uv run python tests/evals/langsmith_runner.py --upload-only
+```
+
 ## Roadmap
 
 - **Phase 1** — Telegram bot + basic responses ✅
