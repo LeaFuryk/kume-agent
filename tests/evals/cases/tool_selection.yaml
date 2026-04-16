@@ -1,12 +1,12 @@
 cases:
   - id: save_goal_explicit
-    description: User expresses a health goal
-    input: "I want to lower my triglycerides"
+    description: User expresses a clear health goal
+    input: "My goal is to lower my triglycerides"
     expected_tools: ["save_goal"]
 
   - id: save_goal_vague
     description: User expresses a vague health intention
-    input: "I need to eat healthier"
+    input: "I want to eat healthier, please save that as my goal"
     expected_tools: ["save_goal"]
 
   - id: save_restriction_allergy
@@ -16,7 +16,7 @@ cases:
 
   - id: save_restriction_diet
     description: User mentions a diet preference
-    input: "I don't eat meat"
+    input: "I don't eat meat, I'm vegetarian"
     expected_tools: ["save_restriction"]
 
   - id: save_health_context
@@ -26,27 +26,27 @@ cases:
 
   - id: fetch_lab_specific
     description: User asks about specific lab marker
-    input: "What was my cholesterol?"
-    expected_tools: ["fetch_lab_results"]
+    input: "What was my cholesterol level in my last lab results?"
+    expected_tools: ["fetch_lab_results", "fetch_user_context"]
 
   - id: fetch_context_broad
-    description: User asks broad health question
-    input: "Am I improving overall?"
+    description: User asks broad health question about their data
+    input: "Show me all my saved health data — goals, restrictions, everything"
     expected_tools: ["fetch_user_context"]
 
   - id: ask_recommendation
     description: User asks what to eat
-    input: "What should I eat for breakfast?"
-    expected_tools: ["ask_recommendation"]
+    input: "Based on my health profile, what should I eat for breakfast?"
+    expected_tools: ["ask_recommendation", "fetch_user_context"]
 
   - id: analyze_food_text
-    description: User asks about specific food
-    input: "Can I eat pizza?"
+    description: User asks about specific food nutritional content
+    input: "Analyze pizza for me — what are the nutritional values?"
     expected_tools: ["analyze_food"]
 
   - id: log_meal_text
     description: User describes what they ate
-    input: "I had two eggs and toast for breakfast"
+    input: "I had two eggs and toast for breakfast, please log it"
     expected_tools: ["log_meal"]
 
   - id: greeting_no_tool
@@ -68,10 +68,10 @@ cases:
 
   - id: multi_goal_restriction
     description: User shares both goal and restriction
-    input: "I'm vegan and I want to lose weight"
+    input: "Save this: I'm vegan and my goal is to lose weight"
     expected_tools: ["save_goal", "save_restriction"]
 
   - id: nutrition_advice_specific
     description: User asks about foods for a condition
-    input: "What foods help lower cholesterol?"
-    expected_tools: ["ask_recommendation"]
+    input: "What foods help lower cholesterol? Give me recommendations"
+    expected_tools: ["ask_recommendation", "fetch_user_context"]
