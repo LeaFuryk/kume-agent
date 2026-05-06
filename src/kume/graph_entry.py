@@ -11,7 +11,11 @@ Limitations of direct graph invocation (vs Telegram bot):
 
 import logging
 
+from dotenv import load_dotenv
+
 from kume.infrastructure.config import Settings
+
+load_dotenv()
 from kume.infrastructure.container import Container
 
 try:
