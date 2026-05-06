@@ -236,12 +236,15 @@ class OrchestratorService:
                 config={"recursion_limit": max(self._max_iterations * 2 + 4, 10)},
             )
             response_text = result.get("formatted_response", "")
+            input_was_safe = result.get("input_safe", True)
 
             if response_text.strip():
                 # Save conversation events to SessionStore
                 # Use a compact summary for session history to avoid replaying
                 # full resource transcripts (PDFs, OCR) on subsequent turns.
-                if self._session_store and user_id:
+                # Only persist if the input was not blocked by the guardrail,
+                # so blocked injection text doesn't pollute session history.
+                if self._session_store and user_id and input_was_safe:
                     now = datetime.now(UTC)
                     history_content = user_message or ""
                     if resources:
