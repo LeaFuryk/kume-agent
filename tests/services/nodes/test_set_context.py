@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import pytest
 
-from kume.infrastructure.request_context import get_context
+from kume.infrastructure.request_context import get_context, set_context
 from kume.services.nodes.set_context import set_request_context
 
 
 class TestSetRequestContext:
     """set_request_context node populates RequestContext from graph state."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_context(self) -> None:  # type: ignore[misc]
+        set_context(None)  # type: ignore[arg-type]
+        yield  # type: ignore[misc]
+        set_context(None)  # type: ignore[arg-type]
 
     @pytest.mark.asyncio
     async def test_sets_context_from_state(self) -> None:

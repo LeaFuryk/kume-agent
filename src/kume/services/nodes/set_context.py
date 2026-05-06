@@ -1,23 +1,25 @@
-# src/kume/services/nodes/set_context.py
 from __future__ import annotations
 
 from typing import Any
 
-from kume.infrastructure.request_context import RequestContext, set_context
+from kume.infrastructure.request_context import RequestContext, get_context, set_context
 
 
 async def set_request_context(state: dict[str, Any]) -> dict[str, Any]:
     """Bootstrap node that sets the RequestContext contextvar from graph state.
 
-    This ensures tools that depend on get_request_context() work both when
-    invoked via the Telegram orchestrator and via direct graph invocation
-    (LangGraph Platform).
+    Only sets context if none exists yet — the Telegram orchestrator sets it
+    before invoking the graph, so this node is a no-op in that path. For direct
+    graph invocation (LangGraph Platform), this provides the context that tools need.
     """
+    existing = get_context()
+    if existing is not None:
+        return {}
+
     user_id = state.get("user_id", "")
     language = state.get("user_language", "en")
-    telegram_id = 0  # not available in direct graph invocation
 
     if user_id:
-        set_context(RequestContext(user_id=user_id, telegram_id=telegram_id, language=language))
+        set_context(RequestContext(user_id=user_id, telegram_id=0, language=language))
 
-    return {}  # no state changes needed
+    return {}
