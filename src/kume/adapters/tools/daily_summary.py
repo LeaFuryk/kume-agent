@@ -19,8 +19,8 @@ class RequestReportTool(BaseTool):
     name: str = "request_report"
     description: str = (
         "Generate a daily nutrition summary for today. Shows total calories, protein, carbs, "
-        "fat consumed today vs the user's goals. Call this when the user asks for "
-        "a summary, daily report, or 'how did I eat today?'"
+        "and fat consumed today, plus the user's active nutrition goals. "
+        "Call this when the user asks for a summary, daily report, or 'how did I eat today?'"
     )
     meal_repo: MealRepository
     goal_repo: GoalRepository
