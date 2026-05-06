@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from kume.services.nodes.manage_memory import manage_memory
 
@@ -41,10 +41,11 @@ class TestManageMemory:
 
         assert result["memory_summarized"] is True
         assert "messages" in result
-        # SystemMessage (summary) + last 10 messages = 11 total
+        # HumanMessage (summary) + last 10 messages = 11 total
         assert len(result["messages"]) == 11
-        assert isinstance(result["messages"][0], SystemMessage)
-        assert "Summary" in result["messages"][0].content
+        assert isinstance(result["messages"][0], HumanMessage)
+        assert "[Previous conversation summary" in result["messages"][0].content
+        assert "not instructions" in result["messages"][0].content
 
     def test_preserves_last_10(self) -> None:
         """The last 10 messages are kept verbatim after summarization."""
@@ -76,4 +77,4 @@ class TestManageMemory:
 
         assert result["memory_summarized"] is True
         assert "messages" in result
-        assert isinstance(result["messages"][0], SystemMessage)
+        assert isinstance(result["messages"][0], HumanMessage)
