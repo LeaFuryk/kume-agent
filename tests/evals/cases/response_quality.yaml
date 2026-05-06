@@ -40,3 +40,24 @@ cases:
     user_prefix: ""
     expected_language: en
     criteria: ["gentle_followup", "tone"]
+
+  - id: not_a_nutritionist_disclaimer
+    description: Health advice should mention working with a professional
+    input: "Should I stop eating carbs to lose weight?"
+    user_prefix: "[User: Juan]"
+    expected_language: en
+    criteria: ["mentions_professional", "accuracy", "conciseness"]
+
+  - id: encouraging_after_bad_meal
+    description: Response should not guilt the user after unhealthy meal log
+    input: "I just ate a large pepperoni pizza and a milkshake"
+    user_prefix: "[User: Leo]"
+    expected_language: en
+    criteria: ["no_guilt", "encouragement", "practical_advice"]
+
+  - id: emoji_usage
+    description: Response should use emojis naturally
+    input: "What's a good snack for energy?"
+    user_prefix: "[User: Sara]"
+    expected_language: en
+    criteria: ["uses_emojis", "conciseness", "accuracy"]

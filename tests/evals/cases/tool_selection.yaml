@@ -75,3 +75,27 @@ cases:
     description: User asks about foods for a condition
     input: "What foods help lower cholesterol? Give me recommendations"
     expected_tools: ["ask_recommendation", "fetch_user_context"]
+
+  # --- Additional coverage with forbidden tools ---
+
+  - id: food_question_no_log
+    description: Food question should analyze, NOT log
+    input: "Is avocado healthy for me?"
+    expected_tools: ["analyze_food", "ask_recommendation"]
+    forbidden_tools: ["log_meal"]
+
+  - id: lab_question_no_save
+    description: Asking about labs should fetch, NOT save
+    input: "Show me my triglyceride levels"
+    expected_tools: ["fetch_lab_results", "fetch_user_context"]
+    forbidden_tools: ["save_goal", "save_restriction", "save_health_context"]
+
+  - id: save_user_name
+    description: User introduces themselves
+    input: "My name is Diego"
+    expected_tools: ["save_user_name"]
+
+  - id: process_lab_report_text
+    description: User mentions sending a lab report (text reference)
+    input: "Here are my blood test results from yesterday"
+    expected_tools: []

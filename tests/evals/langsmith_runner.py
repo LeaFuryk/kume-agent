@@ -45,10 +45,11 @@ def _get_client() -> Client:
 def upload_datasets(client: Client) -> None:
     """Create or update LangSmith datasets from YAML eval cases."""
 
-    # Tool selection dataset
     _upload_tool_selection(client)
     _upload_intent_classification(client)
     _upload_response_quality(client)
+    _upload_edge_cases(client)
+    _upload_language_handling(client)
 
 
 def _upload_tool_selection(client: Client) -> None:
@@ -123,6 +124,60 @@ def _upload_response_quality(client: Client) -> None:
     dataset = client.create_dataset(
         dataset_name=dataset_name,
         description="Kume response quality evals — LLM-as-judge scoring",
+    )
+    for case in cases:
+        client.create_example(
+            dataset_id=dataset.id,
+            inputs={"user_message": case.input, "user_prefix": case.user_prefix},
+            outputs={
+                "criteria": case.criteria,
+                "expected_language": case.expected_language,
+            },
+            metadata={"case_id": case.id, "description": case.description},
+        )
+    print(f"  Uploaded {len(cases)} cases to '{dataset_name}'")
+
+
+def _upload_edge_cases(client: Client) -> None:
+    dataset_name = "kume-edge-cases"
+    cases = load_cases(CASES_DIR / "edge_cases.yaml")
+
+    try:
+        existing = client.read_dataset(dataset_name=dataset_name)
+        client.delete_dataset(dataset_id=existing.id)
+    except Exception:
+        pass
+
+    dataset = client.create_dataset(
+        dataset_name=dataset_name,
+        description="Kume edge cases — error recovery, boundaries, multi-item inputs",
+    )
+    for case in cases:
+        client.create_example(
+            dataset_id=dataset.id,
+            inputs={"user_message": case.input, "user_prefix": case.user_prefix},
+            outputs={
+                "expected_tools": case.expected_tools,
+                "forbidden_tools": case.forbidden_tools,
+            },
+            metadata={"case_id": case.id, "description": case.description},
+        )
+    print(f"  Uploaded {len(cases)} cases to '{dataset_name}'")
+
+
+def _upload_language_handling(client: Client) -> None:
+    dataset_name = "kume-language-handling"
+    cases = load_quality_cases(CASES_DIR / "language_handling.yaml")
+
+    try:
+        existing = client.read_dataset(dataset_name=dataset_name)
+        client.delete_dataset(dataset_id=existing.id)
+    except Exception:
+        pass
+
+    dataset = client.create_dataset(
+        dataset_name=dataset_name,
+        description="Kume language handling — multi-language response verification",
     )
     for case in cases:
         client.create_example(
@@ -403,6 +458,111 @@ def run_response_quality_eval(client: Client) -> None:
     )
 
 
+def run_edge_cases_eval(client: Client) -> None:
+    """Run edge cases eval."""
+    from langsmith import evaluate
+
+    from tests.evals.helpers import run_eval
+
+    orchestrator = _build_orchestrator()
+
+    def target(inputs: dict) -> dict:
+        try:
+            result = _run_with_timeout(
+                run_eval(
+                    orchestrator,
+                    user_message=inputs["user_message"],
+                    user_prefix=inputs.get("user_prefix", ""),
+                )
+            )
+            return {
+                "tool_calls": result.tool_calls,
+                "response": result.response_text,
+                "cost_usd": result.cost_usd,
+            }
+        except TimeoutError:
+            return {"tool_calls": [], "response": "[TIMEOUT]", "cost_usd": 0}
+
+    def edge_correct(run, example) -> dict:
+        actual = set(run.outputs.get("tool_calls", []))
+        expected = set(example.outputs.get("expected_tools", []))
+        forbidden = set(example.outputs.get("forbidden_tools", []))
+
+        has_expected = bool(actual & expected) if expected else True
+        has_forbidden = bool(actual & forbidden)
+
+        return {"key": "edge_correct", "score": 1.0 if (has_expected and not has_forbidden) else 0.0}
+
+    print(f"\nRunning edge cases eval with {EVAL_MODEL}...")
+    evaluate(
+        target,
+        data="kume-edge-cases",
+        evaluators=[edge_correct],
+        experiment_prefix=f"edge-{EVAL_MODEL}",
+        client=client,
+        max_concurrency=2,
+    )
+
+
+def run_language_handling_eval(client: Client) -> None:
+    """Run language handling eval with LLM-as-judge."""
+    from langsmith import evaluate
+
+    from tests.evals.helpers import judge_response, run_eval
+
+    orchestrator = _build_orchestrator()
+
+    from langchain_openai import ChatOpenAI
+    from pydantic import SecretStr
+
+    judge_llm = ChatOpenAI(
+        model=EVAL_MODEL,
+        api_key=SecretStr(os.environ.get("OPENAI_API_KEY", "")),
+        max_retries=3,
+    )
+
+    def target(inputs: dict) -> dict:
+        try:
+            result = _run_with_timeout(
+                run_eval(
+                    orchestrator,
+                    user_message=inputs["user_message"],
+                    user_prefix=inputs.get("user_prefix", ""),
+                )
+            )
+            return {"response": result.response_text, "cost_usd": result.cost_usd}
+        except TimeoutError:
+            return {"response": "[TIMEOUT]", "cost_usd": 0}
+
+    def language_score(run, example) -> list[dict]:
+        criteria = example.outputs.get("criteria", [])
+        expected_lang = example.outputs.get("expected_language", "en")
+        response = run.outputs.get("response", "")
+        user_msg = example.inputs.get("user_message", "")
+
+        scores = asyncio.run(
+            judge_response(
+                llm=judge_llm,
+                user_message=user_msg,
+                response_text=response,
+                criteria=criteria,
+                expected_language=expected_lang,
+            )
+        )
+
+        return [{"key": f"lang_{k}", "score": v / 5.0} for k, v in scores.items()]
+
+    print(f"\nRunning language handling eval with {EVAL_MODEL}...")
+    evaluate(
+        target,
+        data="kume-language-handling",
+        evaluators=[language_score],
+        experiment_prefix=f"language-{EVAL_MODEL}",
+        client=client,
+        max_concurrency=2,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -427,6 +587,8 @@ def main() -> None:
     run_tool_selection_eval(client)
     run_intent_classification_eval(client)
     run_response_quality_eval(client)
+    run_edge_cases_eval(client)
+    run_language_handling_eval(client)
 
     print("\n" + "=" * 60)
     print("All evals complete. View results at: https://smith.langchain.com")

@@ -1,0 +1,35 @@
+cases:
+  - id: spanish_greeting
+    description: Spanish greeting should get Spanish response
+    input: "Hola, cómo estás?"
+    user_prefix: ""
+    expected_language: es
+    criteria: ["language_match", "tone"]
+
+  - id: spanish_returning_user
+    description: Returning Spanish user gets Spanish, no intro
+    input: "Qué comí hoy?"
+    user_prefix: "[User: Carlos]"
+    expected_language: es
+    criteria: ["language_match", "no_introduction"]
+
+  - id: english_lab_question
+    description: English user asking about labs
+    input: "What were my last cholesterol results?"
+    user_prefix: "[User: Sarah]"
+    expected_language: en
+    criteria: ["language_match", "conciseness"]
+
+  - id: portuguese_basic
+    description: Portuguese input should get Portuguese response
+    input: "O que devo comer no café da manhã?"
+    user_prefix: "[User: Pedro]"
+    expected_language: pt
+    criteria: ["language_match", "conciseness"]
+
+  - id: spanish_goal_setting
+    description: Spanish user setting a goal
+    input: "Quiero bajar mis triglicéridos"
+    user_prefix: "[User: Ana]"
+    expected_language: es
+    criteria: ["language_match", "encouragement", "saves_data"]
