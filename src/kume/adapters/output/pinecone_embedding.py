@@ -29,23 +29,43 @@ def _create_vector_store(
 
 
 class PineconeEmbeddingRepository(EmbeddingRepository):
-    """Embedding repository backed by Pinecone + OpenAI embeddings."""
+    """Embedding repository backed by Pinecone + OpenAI embeddings.
+
+    The Pinecone connection is lazily initialized on the first call to
+    ``embed_chunks`` or ``search``, preventing import-time crashes when
+    Pinecone credentials are misconfigured (e.g. during LangGraph Platform
+    deployment bootstrapping).
+    """
 
     def __init__(self, api_key: str, index_name: str, openai_api_key: str, embedding_model: str) -> None:
-        self._vector_store = _create_vector_store(api_key, index_name, openai_api_key, embedding_model)
+        self._api_key = api_key
+        self._index_name = index_name
+        self._openai_api_key = openai_api_key
+        self._embedding_model = embedding_model
+        self._vector_store: PineconeVectorStore | None = None
+
+    def _get_store(self) -> PineconeVectorStore:
+        """Return the vector store, creating it on first access."""
+        if self._vector_store is None:
+            self._vector_store = _create_vector_store(
+                self._api_key, self._index_name, self._openai_api_key, self._embedding_model
+            )
+        return self._vector_store
 
     async def embed_chunks(self, user_id: str, document_id: str, chunks: list[str]) -> None:
         docs = [
             LCDocument(page_content=chunk, metadata={"user_id": user_id, "document_id": document_id})
             for chunk in chunks
         ]
+        store = self._get_store()
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, self._vector_store.add_documents, docs)
+        await loop.run_in_executor(None, store.add_documents, docs)
 
     async def search(self, user_id: str, query: str, k: int = 5) -> list[str]:
+        store = self._get_store()
         loop = asyncio.get_running_loop()
         results = await loop.run_in_executor(
             None,
-            lambda: self._vector_store.similarity_search(query, k=k, filter={"user_id": user_id}),
+            lambda: store.similarity_search(query, k=k, filter={"user_id": user_id}),
         )
         return [doc.page_content for doc in results]

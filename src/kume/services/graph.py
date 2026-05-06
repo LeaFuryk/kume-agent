@@ -2,10 +2,14 @@
 
 Wires all nodes into a graph with guardrail routing:
 
-    manage_memory -> input_guardrail -> agent -> format_response -> output_guardrail -> END
-                          |                                              |
-                          v                                              v
-                    block_response                                 block_response
+    set_context -> manage_memory -> input_guardrail -> agent -> format_response -> output_guardrail -> END
+                                          |                                              |
+                                          v                                              v
+                                    block_response                                 block_response
+
+The set_context node bootstraps the RequestContext contextvar from graph state
+so that tools work both via the Telegram orchestrator and direct LangGraph
+Platform invocation.
 
 The output guardrail runs AFTER format_response so it validates the final
 text the user will see, preventing the formatter LLM from introducing
@@ -24,6 +28,7 @@ from kume.services.nodes import (
     input_guardrail,
     manage_memory,
     output_guardrail,
+    set_request_context,
 )
 from kume.services.state import KumeGraphState
 
@@ -70,6 +75,7 @@ def build_graph(
     async def memory_node(state: dict[str, Any]) -> dict[str, Any]:
         return await manage_memory(state, threshold=memory_threshold)
 
+    graph.add_node("set_context", set_request_context)  # type: ignore[type-var]
     graph.add_node("manage_memory", memory_node)  # type: ignore[type-var]
     graph.add_node("input_guardrail", input_guardrail)  # type: ignore[type-var]
     graph.add_node("agent", agent_runnable)  # type: ignore[type-var]
@@ -77,7 +83,8 @@ def build_graph(
     graph.add_node("format_response", format_response)  # type: ignore[type-var]
     graph.add_node("block_response", block_response)  # type: ignore[type-var]
 
-    graph.set_entry_point("manage_memory")
+    graph.set_entry_point("set_context")
+    graph.add_edge("set_context", "manage_memory")
     graph.add_edge("manage_memory", "input_guardrail")
     graph.add_conditional_edges(
         "input_guardrail",

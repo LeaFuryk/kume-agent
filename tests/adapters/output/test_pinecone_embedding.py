@@ -17,16 +17,15 @@ def mock_vector_store() -> MagicMock:
 
 @pytest.fixture
 def repo(mock_vector_store: MagicMock) -> PineconeEmbeddingRepository:
-    with patch(
-        "kume.adapters.output.pinecone_embedding._create_vector_store",
-        return_value=mock_vector_store,
-    ):
-        return PineconeEmbeddingRepository(
-            api_key="fake-pinecone-key",
-            index_name="fake-index",
-            openai_api_key="fake-openai-key",
-            embedding_model="text-embedding-3-small",
-        )
+    repo = PineconeEmbeddingRepository(
+        api_key="fake-pinecone-key",
+        index_name="fake-index",
+        openai_api_key="fake-openai-key",
+        embedding_model="text-embedding-3-small",
+    )
+    # Inject mock directly so _get_store() returns it without calling Pinecone
+    repo._vector_store = mock_vector_store
+    return repo
 
 
 async def test_embed_chunks_creates_documents(repo: PineconeEmbeddingRepository, mock_vector_store: MagicMock) -> None:
@@ -60,3 +59,36 @@ async def test_search_empty_results(repo: PineconeEmbeddingRepository, mock_vect
     results = await repo.search(user_id="user-99", query="nonexistent topic")
 
     assert results == []
+
+
+def test_init_does_not_connect_eagerly() -> None:
+    """Constructing the repo should NOT call _create_vector_store."""
+    with patch(
+        "kume.adapters.output.pinecone_embedding._create_vector_store",
+    ) as mock_create:
+        repo = PineconeEmbeddingRepository(
+            api_key="fake-key",
+            index_name="fake-index",
+            openai_api_key="fake-openai-key",
+            embedding_model="text-embedding-3-small",
+        )
+        mock_create.assert_not_called()
+        assert repo._vector_store is None
+
+
+def test_get_store_creates_on_first_access() -> None:
+    """_get_store() calls _create_vector_store exactly once, then caches."""
+    with patch(
+        "kume.adapters.output.pinecone_embedding._create_vector_store",
+        return_value=MagicMock(),
+    ) as mock_create:
+        repo = PineconeEmbeddingRepository(
+            api_key="fake-key",
+            index_name="fake-index",
+            openai_api_key="fake-openai-key",
+            embedding_model="text-embedding-3-small",
+        )
+        store1 = repo._get_store()
+        store2 = repo._get_store()
+        mock_create.assert_called_once()
+        assert store1 is store2
