@@ -134,17 +134,31 @@ async def test_graph_receives_recursion_limit() -> None:
 
     mock_graph.ainvoke.assert_called_once()
     config = mock_graph.ainvoke.call_args[1]["config"]
-    assert config["recursion_limit"] == 16  # max_iterations * 2
+    # max_iterations * 2 + 4 fixed nodes = 8 * 2 + 4 = 20
+    assert config["recursion_limit"] == 20
 
 
 async def test_graph_default_recursion_limit() -> None:
-    """Verify default max_iterations=5 yields recursion_limit=10."""
+    """Verify default max_iterations=5 yields recursion_limit=14."""
     mock_graph = _make_mock_graph("response")
     orch = OrchestratorService(graph=mock_graph)
 
     await orch.process(telegram_id=1, user_message="test")
 
     config = mock_graph.ainvoke.call_args[1]["config"]
+    # max_iterations * 2 + 4 fixed nodes = 5 * 2 + 4 = 14
+    assert config["recursion_limit"] == 14
+
+
+async def test_graph_minimum_recursion_limit() -> None:
+    """Verify max_iterations=1 still gets at least recursion_limit=10."""
+    mock_graph = _make_mock_graph("response")
+    orch = OrchestratorService(graph=mock_graph, max_iterations=1)
+
+    await orch.process(telegram_id=1, user_message="test")
+
+    config = mock_graph.ainvoke.call_args[1]["config"]
+    # max(1 * 2 + 4, 10) = max(6, 10) = 10
     assert config["recursion_limit"] == 10
 
 

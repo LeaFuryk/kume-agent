@@ -231,7 +231,9 @@ class OrchestratorService:
                     "memory_summarized": False,
                     "tool_error_count": 0,
                 },
-                config={"recursion_limit": self._max_iterations * 2},
+                # Each agent iteration = 2 recursion steps (model call + tool call)
+                # Plus 4 fixed nodes (manage_memory, input_guardrail, format_response, output_guardrail)
+                config={"recursion_limit": max(self._max_iterations * 2 + 4, 10)},
             )
             response_text = result.get("formatted_response", "")
 
