@@ -8,6 +8,8 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage
 
+from kume.services.orchestrator import _extract_text_content
+
 logger = logging.getLogger(__name__)
 
 INPUT_GUARDRAIL_PROMPT = """\
@@ -53,7 +55,7 @@ def input_guardrail(state: dict[str, Any]) -> dict[str, Any]:
     user_message = ""
     for msg in reversed(messages):
         if isinstance(msg, HumanMessage):
-            user_message = str(msg.content)
+            user_message = _extract_text_content(msg.content)
             break
 
     raw = _call_guardrail_llm(user_message)

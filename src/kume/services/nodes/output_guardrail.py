@@ -8,6 +8,8 @@ from typing import Any
 
 from langchain_core.messages import AIMessage
 
+from kume.services.orchestrator import _extract_text_content
+
 logger = logging.getLogger(__name__)
 
 OUTPUT_GUARDRAIL_PROMPT = """\
@@ -63,7 +65,7 @@ def output_guardrail(state: dict[str, Any]) -> dict[str, Any]:
         messages = state.get("messages", [])
         for msg in reversed(messages):
             if isinstance(msg, AIMessage):
-                text_to_check = str(msg.content)
+                text_to_check = _extract_text_content(msg.content)
                 break
 
     raw = _call_guardrail_llm(text_to_check)
