@@ -50,12 +50,13 @@ def test_from_env_uses_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.log_format == "pretty"
 
 
-def test_from_env_raises_when_telegram_token_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_from_env_allows_missing_telegram_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """TELEGRAM_TOKEN is optional at Settings level — validated later by the Telegram bot."""
     monkeypatch.delenv("TELEGRAM_TOKEN", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-abc")
 
-    with pytest.raises(ValueError, match="TELEGRAM_TOKEN"):
-        Settings.from_env()
+    s = Settings.from_env()
+    assert s.telegram_token == ""
 
 
 def test_from_env_raises_when_openai_api_key_missing(monkeypatch: pytest.MonkeyPatch) -> None:

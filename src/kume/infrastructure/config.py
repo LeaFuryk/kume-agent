@@ -23,8 +23,8 @@ class Settings:
     def from_env(cls) -> "Settings":
         telegram_token = os.environ.get("TELEGRAM_TOKEN", "")
         openai_api_key = os.environ.get("OPENAI_API_KEY", "")
-        if not telegram_token:
-            raise ValueError("TELEGRAM_TOKEN environment variable is required")
+        # telegram_token is only required when running the Telegram bot,
+        # not when deploying the graph to LangGraph Platform
         if not openai_api_key:
             raise ValueError("OPENAI_API_KEY environment variable is required")
         max_iterations = int(os.environ.get("MAX_AGENT_ITERATIONS", "5"))
