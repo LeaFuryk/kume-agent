@@ -92,3 +92,16 @@ class TestInputGuardrail:
 
         assert result["input_safe"] is False
         assert result["guardrail_violation"] == "guardrail_error"
+
+    def test_non_boolean_safe_fails_closed(self) -> None:
+        """String 'false' for safe field should fail closed."""
+        state = {"messages": [HumanMessage(content="Hello")]}
+
+        with patch(
+            "kume.services.nodes.input_guardrail._call_guardrail_llm",
+            return_value='{"safe": "false", "category": null, "reason": "test"}',
+        ):
+            result = input_guardrail(state)
+
+        assert result["input_safe"] is False
+        assert result["guardrail_violation"] == "guardrail_error"

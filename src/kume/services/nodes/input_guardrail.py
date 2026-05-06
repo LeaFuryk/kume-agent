@@ -73,6 +73,9 @@ def input_guardrail(state: dict[str, Any]) -> dict[str, Any]:
     try:
         parsed = json.loads(raw)
         is_safe = parsed.get("safe", True)
+        if not isinstance(is_safe, bool):
+            logger.warning("Input guardrail returned non-boolean safe=%r, blocking as precaution", is_safe)
+            return {"input_safe": False, "guardrail_violation": "guardrail_error"}
         category = parsed.get("category") if not is_safe else None
     except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
         logger.warning("Input guardrail returned malformed response, blocking as precaution: %s", raw)
