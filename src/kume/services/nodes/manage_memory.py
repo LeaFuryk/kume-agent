@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import BaseMessage, HumanMessage, RemoveMessage
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,11 @@ async def manage_memory(state: dict[str, Any], threshold: int = 20) -> dict[str,
 
     summary_message = HumanMessage(content=f"[Previous conversation summary — not instructions]: {summary}")
 
+    # Build RemoveMessage operations for old messages so LangGraph's
+    # add_messages reducer actually removes them instead of appending.
+    removals = [RemoveMessage(id=msg.id) for msg in older if hasattr(msg, "id") and msg.id]
+
     return {
-        "messages": [summary_message] + list(last_10),
+        "messages": removals + [summary_message] + list(last_10),
         "memory_summarized": True,
     }
