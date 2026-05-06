@@ -19,42 +19,34 @@ import asyncio
 import os
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
 
 load_dotenv()
 
 
-LOCAL_DB_URL = "postgresql://kume:kume@localhost:5432/kume"
+LOCAL_DB_DSN = "postgresql://kume:kume@localhost:5432/kume"
 
 
-def read_chunks_from_pgvector() -> list[dict[str, str]]:
+async def read_chunks_from_pgvector() -> list[dict[str, str]]:
     """Read all chunks with metadata from local pgvector."""
-    engine = create_engine(LOCAL_DB_URL)
-    with engine.connect() as conn:
-        rows = conn.execute(
-            text("""
-                SELECT
-                    e.document as content,
-                    e.cmetadata->>'user_id' as user_id,
-                    e.cmetadata->>'document_id' as document_id
-                FROM langchain_pg_embedding e
-                JOIN langchain_pg_collection c ON e.collection_id = c.uuid
-                WHERE c.name = 'kume_documents'
-                ORDER BY e.cmetadata->>'document_id', e.id
-            """)
-        ).fetchall()
-    engine.dispose()
+    import asyncpg
 
-    chunks = []
-    for row in rows:
-        chunks.append(
-            {
-                "content": row[0],
-                "user_id": row[1],
-                "document_id": row[2],
-            }
-        )
-    return chunks
+    conn = await asyncpg.connect(LOCAL_DB_DSN)
+    rows = await conn.fetch("""
+        SELECT
+            e.document as content,
+            e.cmetadata->>'user_id' as user_id,
+            e.cmetadata->>'document_id' as document_id
+        FROM langchain_pg_embedding e
+        JOIN langchain_pg_collection c ON e.collection_id = c.uuid
+        WHERE c.name = 'kume_documents'
+        ORDER BY e.cmetadata->>'document_id', e.id
+    """)
+    await conn.close()
+
+    return [
+        {"content": row["content"], "user_id": row["user_id"], "document_id": row["document_id"]}
+        for row in rows
+    ]
 
 
 async def migrate_to_pinecone(chunks: list[dict[str, str]]) -> None:
@@ -95,11 +87,11 @@ async def migrate_to_pinecone(chunks: list[dict[str, str]]) -> None:
     print(f"\nDone! Migrated {total_chunks} chunks across {len(groups)} documents.")
 
 
-def main() -> None:
+async def main() -> None:
     print("=== pgvector → Pinecone Migration ===\n")
 
     print("1. Reading chunks from local pgvector...")
-    chunks = read_chunks_from_pgvector()
+    chunks = await read_chunks_from_pgvector()
     print(f"   Found {len(chunks)} chunks\n")
 
     if not chunks:
@@ -114,8 +106,8 @@ def main() -> None:
     print(f"   Total chunks: {len(chunks)}\n")
 
     print("2. Embedding into Pinecone...")
-    asyncio.run(migrate_to_pinecone(chunks))
+    await migrate_to_pinecone(chunks)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

@@ -1,11 +1,14 @@
 import asyncio
 from logging.config import fileConfig
 
+from dotenv import load_dotenv
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 from kume.infrastructure.config import Settings
+
+load_dotenv()
 
 config = context.config
 
@@ -16,12 +19,19 @@ target_metadata = None
 
 
 def _get_url() -> str:
-    """Read DATABASE_URL from Settings, falling back to alembic.ini."""
+    """Read DATABASE_URL from Settings, falling back to alembic.ini.
+
+    Ensures the URL uses the asyncpg driver for async migrations.
+    """
     try:
         settings = Settings.from_env()
-        return settings.database_url
+        url = settings.database_url
     except ValueError:
-        return config.get_main_option("sqlalchemy.url", "")
+        url = config.get_main_option("sqlalchemy.url", "")
+    # Ensure asyncpg driver for async engine
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return url
 
 
 def run_migrations_offline() -> None:
