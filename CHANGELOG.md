@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **LangGraph agent pipeline**: Migrated from flat `create_agent` to a 6-node LangGraph `StateGraph` with explicit routing and conditional edges
+- **Input guardrail**: LLM-based screening (gpt-4o-mini) blocks prompt injection, data extraction attempts, and manipulation before the agent executes
+- **Output guardrail**: LLM-based validation (gpt-4o-mini) catches dangerous medical advice, eating disorder triggers, missing disclaimers, and data leaks
+- **Response formatter**: Dedicated gpt-4o-mini node separating reasoning (agent) from communication (formatter) for independent prompt tuning
+- **Memory management**: Automatic conversation history summarization when messages exceed configurable threshold, preventing context window bloat
+- **Pinecone adapter**: New `PineconeEmbeddingRepository` implementing `EmbeddingRepository` port — zero changes to domain or services (hexagonal architecture port swap)
+- **Daily nutrition summary**: Real `RequestReportTool` replacing stub — aggregates today's meals, compares against goals
+- **LangGraph Platform deployment**: `langgraph.json` configuration for deploying to LangGraph Platform (free Developer tier)
+
+### Changed
+- **Orchestrator**: Simplified from monolith to thin graph coordinator
+- **System prompt**: Split into `AGENT_SYSTEM_PROMPT` (reasoning + behavioral rules) and `FORMATTER_PROMPT` (tone + presentation)
+- **Container**: Conditional Pinecone/pgvector adapter selection based on `PINECONE_API_KEY` env var
+
 ## [0.4.0] - 2026-04-13
 
 ### Added
