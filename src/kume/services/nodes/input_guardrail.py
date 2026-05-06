@@ -64,7 +64,7 @@ def input_guardrail(state: dict[str, Any]) -> dict[str, Any]:
         parsed = json.loads(raw)
         is_safe = parsed.get("safe", True)
         category = parsed.get("category") if not is_safe else None
-    except (json.JSONDecodeError, KeyError, TypeError):
+    except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
         logger.warning("Input guardrail returned malformed response, blocking as precaution: %s", raw)
         is_safe = False
         category = "guardrail_error"

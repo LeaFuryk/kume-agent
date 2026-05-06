@@ -152,3 +152,22 @@ class TestOutputGuardrail:
 
         assert result["output_safe"] is False
         assert result["guardrail_violation"] == "guardrail_error"
+
+    def test_non_object_json_fails_closed(self) -> None:
+        """Valid JSON that isn't an object (e.g. array) should fail closed."""
+        state = {
+            "formatted_response": "Eat more vegetables.",
+            "messages": [
+                HumanMessage(content="What should I eat?"),
+                AIMessage(content="Eat more vegetables."),
+            ],
+        }
+
+        with patch(
+            "kume.services.nodes.output_guardrail._call_guardrail_llm",
+            return_value='["not", "an", "object"]',
+        ):
+            result = output_guardrail(state)
+
+        assert result["output_safe"] is False
+        assert result["guardrail_violation"] == "guardrail_error"
