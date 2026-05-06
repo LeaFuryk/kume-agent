@@ -30,6 +30,10 @@ def settings() -> Settings:
         database_url="postgresql+asyncpg://kume:kume@localhost:5432/kume",
         openai_embedding_model="text-embedding-3-small",
         log_format="pretty",
+        pinecone_api_key="",
+        pinecone_index="kume-documents",
+        memory_summary_threshold=20,
+        max_tool_errors=2,
     )
 
 

@@ -80,3 +80,29 @@ def test_settings_importable_from_infrastructure_package() -> None:
     from kume.infrastructure import Settings as FromInfra
 
     assert FromInfra is Settings
+
+
+def test_settings_pinecone_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Settings loads Pinecone fields with defaults when env vars are absent."""
+    monkeypatch.setenv("TELEGRAM_TOKEN", "test-token")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    settings = Settings.from_env()
+    assert settings.pinecone_api_key == ""
+    assert settings.pinecone_index == "kume-documents"
+    assert settings.memory_summary_threshold == 20
+    assert settings.max_tool_errors == 2
+
+
+def test_settings_pinecone_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Settings reads Pinecone fields from environment."""
+    monkeypatch.setenv("TELEGRAM_TOKEN", "test-token")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("PINECONE_API_KEY", "pine-key")
+    monkeypatch.setenv("PINECONE_INDEX", "my-index")
+    monkeypatch.setenv("MEMORY_SUMMARY_THRESHOLD", "30")
+    monkeypatch.setenv("MAX_TOOL_ERRORS", "3")
+    settings = Settings.from_env()
+    assert settings.pinecone_api_key == "pine-key"
+    assert settings.pinecone_index == "my-index"
+    assert settings.memory_summary_threshold == 30
+    assert settings.max_tool_errors == 3

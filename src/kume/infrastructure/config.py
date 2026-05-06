@@ -14,6 +14,10 @@ class Settings:
     database_url: str
     openai_embedding_model: str
     log_format: str
+    pinecone_api_key: str
+    pinecone_index: str
+    memory_summary_threshold: int
+    max_tool_errors: int
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -40,4 +44,8 @@ class Settings:
             ),
             openai_embedding_model=os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
             log_format=os.environ.get("LOG_FORMAT", "pretty"),
+            pinecone_api_key=os.environ.get("PINECONE_API_KEY", ""),
+            pinecone_index=os.environ.get("PINECONE_INDEX", "kume-documents"),
+            memory_summary_threshold=int(os.environ.get("MEMORY_SUMMARY_THRESHOLD", "20")),
+            max_tool_errors=int(os.environ.get("MAX_TOOL_ERRORS", "2")),
         )
