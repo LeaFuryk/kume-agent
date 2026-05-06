@@ -78,19 +78,17 @@ def output_guardrail(state: dict[str, Any]) -> dict[str, Any]:
                 text_to_check = _extract_text_content(msg.content)
                 break
 
-    raw = _call_guardrail_llm(text_to_check)
-
     try:
+        raw = _call_guardrail_llm(text_to_check)
         parsed = json.loads(raw)
         is_safe = parsed.get("safe", True)
         if not isinstance(is_safe, bool):
             logger.warning("Output guardrail returned non-boolean safe=%r, blocking as precaution", is_safe)
             return {"output_safe": False, "guardrail_violation": "guardrail_error"}
         category = parsed.get("category") if not is_safe else None
-    except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
-        logger.warning("Output guardrail returned malformed response, blocking as precaution: %s", raw)
-        is_safe = False
-        category = "guardrail_error"
+    except Exception:
+        logger.warning("Output guardrail failed, blocking as precaution", exc_info=True)
+        return {"output_safe": False, "guardrail_violation": "guardrail_error"}
 
     return {
         "output_safe": is_safe,

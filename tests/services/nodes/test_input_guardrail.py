@@ -105,3 +105,16 @@ class TestInputGuardrail:
 
         assert result["input_safe"] is False
         assert result["guardrail_violation"] == "guardrail_error"
+
+    def test_api_failure_fails_closed(self) -> None:
+        """LLM API failure should fail closed."""
+        state = {"messages": [HumanMessage(content="Hello")]}
+
+        with patch(
+            "kume.services.nodes.input_guardrail._call_guardrail_llm",
+            side_effect=RuntimeError("API timeout"),
+        ):
+            result = input_guardrail(state)
+
+        assert result["input_safe"] is False
+        assert result["guardrail_violation"] == "guardrail_error"

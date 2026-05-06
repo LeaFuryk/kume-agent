@@ -68,19 +68,17 @@ def input_guardrail(state: dict[str, Any]) -> dict[str, Any]:
             user_message = _extract_text_content(msg.content)
             break
 
-    raw = _call_guardrail_llm(user_message)
-
     try:
+        raw = _call_guardrail_llm(user_message)
         parsed = json.loads(raw)
         is_safe = parsed.get("safe", True)
         if not isinstance(is_safe, bool):
             logger.warning("Input guardrail returned non-boolean safe=%r, blocking as precaution", is_safe)
             return {"input_safe": False, "guardrail_violation": "guardrail_error"}
         category = parsed.get("category") if not is_safe else None
-    except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
-        logger.warning("Input guardrail returned malformed response, blocking as precaution: %s", raw)
-        is_safe = False
-        category = "guardrail_error"
+    except Exception:
+        logger.warning("Input guardrail failed, blocking as precaution", exc_info=True)
+        return {"input_safe": False, "guardrail_violation": "guardrail_error"}
 
     return {
         "input_safe": is_safe,
