@@ -35,7 +35,7 @@ class RequestReportTool(BaseTool):
         now = datetime.now(UTC)
         start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-        meals = await self.meal_repo.get_by_user(user_id, since=start_of_day, limit=50)
+        meals = await self.meal_repo.get_by_user(user_id, since=start_of_day)
         goals = await self.goal_repo.get_by_user(user_id, active_only=True)
 
         if not meals:
