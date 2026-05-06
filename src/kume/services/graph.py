@@ -67,8 +67,8 @@ def build_graph(
     graph = StateGraph(KumeGraphState)
 
     # Wrap manage_memory to inject the threshold parameter
-    def memory_node(state: dict[str, Any]) -> dict[str, Any]:
-        return manage_memory(state, threshold=memory_threshold)
+    async def memory_node(state: dict[str, Any]) -> dict[str, Any]:
+        return await manage_memory(state, threshold=memory_threshold)
 
     graph.add_node("manage_memory", memory_node)  # type: ignore[type-var]
     graph.add_node("input_guardrail", input_guardrail)  # type: ignore[type-var]

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -18,7 +18,7 @@ class TestOutputGuardrail:
     raw AIMessage directly.
     """
 
-    def test_safe_response_passes(self) -> None:
+    async def test_safe_response_passes(self) -> None:
         """A safe formatted response is marked output_safe."""
         safe_response = json.dumps({"safe": True, "category": None, "reason": "Normal nutrition advice"})
         state = {
@@ -32,14 +32,15 @@ class TestOutputGuardrail:
 
         with patch(
             "kume.services.nodes.output_guardrail._call_guardrail_llm",
+            new_callable=AsyncMock,
             return_value=safe_response,
         ):
-            result = output_guardrail(state)
+            result = await output_guardrail(state)
 
         assert result["output_safe"] is True
         assert result["guardrail_violation"] is None
 
-    def test_dangerous_medical_advice_blocked(self) -> None:
+    async def test_dangerous_medical_advice_blocked(self) -> None:
         """Dangerous medical advice in formatted output is flagged."""
         unsafe_response = json.dumps(
             {
@@ -58,14 +59,15 @@ class TestOutputGuardrail:
 
         with patch(
             "kume.services.nodes.output_guardrail._call_guardrail_llm",
+            new_callable=AsyncMock,
             return_value=unsafe_response,
         ):
-            result = output_guardrail(state)
+            result = await output_guardrail(state)
 
         assert result["output_safe"] is False
         assert result["guardrail_violation"] == "dangerous_medical_advice"
 
-    def test_eating_disorder_trigger_blocked(self) -> None:
+    async def test_eating_disorder_trigger_blocked(self) -> None:
         """Content that could trigger eating disorders is flagged."""
         unsafe_response = json.dumps(
             {
@@ -84,14 +86,15 @@ class TestOutputGuardrail:
 
         with patch(
             "kume.services.nodes.output_guardrail._call_guardrail_llm",
+            new_callable=AsyncMock,
             return_value=unsafe_response,
         ):
-            result = output_guardrail(state)
+            result = await output_guardrail(state)
 
         assert result["output_safe"] is False
         assert result["guardrail_violation"] == "eating_disorder_trigger"
 
-    def test_prefers_formatted_response(self) -> None:
+    async def test_prefers_formatted_response(self) -> None:
         """The node validates formatted_response (not the raw AIMessage)."""
         safe_response = json.dumps({"safe": True, "category": None, "reason": "OK"})
         state = {
@@ -107,14 +110,15 @@ class TestOutputGuardrail:
 
         with patch(
             "kume.services.nodes.output_guardrail._call_guardrail_llm",
+            new_callable=AsyncMock,
             return_value=safe_response,
         ) as mock_llm:
-            output_guardrail(state)
+            await output_guardrail(state)
 
         # Should check the formatted_response, not the raw AIMessage
-        mock_llm.assert_called_once_with("Formatted: Second answer")
+        mock_llm.assert_awaited_once_with("Formatted: Second answer")
 
-    def test_falls_back_to_ai_message_when_no_formatted_response(self) -> None:
+    async def test_falls_back_to_ai_message_when_no_formatted_response(self) -> None:
         """When formatted_response is empty, falls back to the last AIMessage."""
         safe_response = json.dumps({"safe": True, "category": None, "reason": "OK"})
         state = {
@@ -128,13 +132,14 @@ class TestOutputGuardrail:
 
         with patch(
             "kume.services.nodes.output_guardrail._call_guardrail_llm",
+            new_callable=AsyncMock,
             return_value=safe_response,
         ) as mock_llm:
-            output_guardrail(state)
+            await output_guardrail(state)
 
-        mock_llm.assert_called_once_with("Raw answer")
+        mock_llm.assert_awaited_once_with("Raw answer")
 
-    def test_malformed_json_fails_closed(self) -> None:
+    async def test_malformed_json_fails_closed(self) -> None:
         """When the LLM returns unparseable JSON, fail closed (block as precaution)."""
         state = {
             "formatted_response": "Take vitamin D.",
@@ -146,14 +151,15 @@ class TestOutputGuardrail:
 
         with patch(
             "kume.services.nodes.output_guardrail._call_guardrail_llm",
+            new_callable=AsyncMock,
             return_value="not json {{{",
         ):
-            result = output_guardrail(state)
+            result = await output_guardrail(state)
 
         assert result["output_safe"] is False
         assert result["guardrail_violation"] == "guardrail_error"
 
-    def test_non_object_json_fails_closed(self) -> None:
+    async def test_non_object_json_fails_closed(self) -> None:
         """Valid JSON that isn't an object (e.g. array) should fail closed."""
         state = {
             "formatted_response": "Eat more vegetables.",
@@ -165,14 +171,15 @@ class TestOutputGuardrail:
 
         with patch(
             "kume.services.nodes.output_guardrail._call_guardrail_llm",
+            new_callable=AsyncMock,
             return_value='["not", "an", "object"]',
         ):
-            result = output_guardrail(state)
+            result = await output_guardrail(state)
 
         assert result["output_safe"] is False
         assert result["guardrail_violation"] == "guardrail_error"
 
-    def test_non_boolean_safe_fails_closed(self) -> None:
+    async def test_non_boolean_safe_fails_closed(self) -> None:
         """String 'false' for safe field should fail closed."""
         state = {
             "formatted_response": "Some response.",
@@ -184,14 +191,15 @@ class TestOutputGuardrail:
 
         with patch(
             "kume.services.nodes.output_guardrail._call_guardrail_llm",
+            new_callable=AsyncMock,
             return_value='{"safe": "false", "category": null, "reason": "test"}',
         ):
-            result = output_guardrail(state)
+            result = await output_guardrail(state)
 
         assert result["output_safe"] is False
         assert result["guardrail_violation"] == "guardrail_error"
 
-    def test_api_failure_fails_closed(self) -> None:
+    async def test_api_failure_fails_closed(self) -> None:
         """LLM API failure should fail closed."""
         state = {
             "formatted_response": "Some response.",
@@ -203,9 +211,10 @@ class TestOutputGuardrail:
 
         with patch(
             "kume.services.nodes.output_guardrail._call_guardrail_llm",
+            new_callable=AsyncMock,
             side_effect=RuntimeError("API timeout"),
         ):
-            result = output_guardrail(state)
+            result = await output_guardrail(state)
 
         assert result["output_safe"] is False
         assert result["guardrail_violation"] == "guardrail_error"

@@ -30,7 +30,7 @@ Respond with ONLY a JSON object (no markdown, no extra text):
 INPUT_GUARDRAIL_PROMPT = _INPUT_GUARDRAIL_SYSTEM_PROMPT
 
 
-def _call_guardrail_llm(user_message: str) -> str:
+async def _call_guardrail_llm(user_message: str) -> str:
     """Call gpt-4o-mini for safety classification.
 
     Separated from the node function for testability.
@@ -38,7 +38,7 @@ def _call_guardrail_llm(user_message: str) -> str:
     from langchain_openai import ChatOpenAI
 
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-    response = llm.invoke(
+    response = await llm.ainvoke(
         [
             {"role": "system", "content": _INPUT_GUARDRAIL_SYSTEM_PROMPT},
             {
@@ -50,7 +50,7 @@ def _call_guardrail_llm(user_message: str) -> str:
     return str(response.content)
 
 
-def input_guardrail(state: dict[str, Any]) -> dict[str, Any]:
+async def input_guardrail(state: dict[str, Any]) -> dict[str, Any]:
     """Screen the latest user message for safety threats.
 
     Returns ``input_safe=True`` and ``guardrail_violation=None`` when the
@@ -69,7 +69,7 @@ def input_guardrail(state: dict[str, Any]) -> dict[str, Any]:
             break
 
     try:
-        raw = _call_guardrail_llm(user_message)
+        raw = await _call_guardrail_llm(user_message)
         parsed = json.loads(raw)
         is_safe = parsed.get("safe", True)
         if not isinstance(is_safe, bool):

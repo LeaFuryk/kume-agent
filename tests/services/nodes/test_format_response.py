@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -17,7 +17,7 @@ class TestFormatResponse:
     sets both ``raw_agent_response`` and ``formatted_response``.
     """
 
-    def test_returns_formatted_text(self) -> None:
+    async def test_returns_formatted_text(self) -> None:
         """The node returns formatted text from the LLM."""
         state = {
             "messages": [
@@ -30,14 +30,15 @@ class TestFormatResponse:
 
         with patch(
             "kume.services.nodes.format_response._call_formatter_llm",
+            new_callable=AsyncMock,
             return_value="Hey Ana! Here's what I'd suggest:\n- More veggies\n- Lean proteins",
         ):
-            result = format_response(state)
+            result = await format_response(state)
 
         assert result["formatted_response"] == "Hey Ana! Here's what I'd suggest:\n- More veggies\n- Lean proteins"
         assert result["raw_agent_response"] == "You should eat more vegetables and lean proteins."
 
-    def test_passes_user_context_to_llm(self) -> None:
+    async def test_passes_user_context_to_llm(self) -> None:
         """The node passes user_name and language to the formatter LLM."""
         state = {
             "messages": [
@@ -50,13 +51,14 @@ class TestFormatResponse:
 
         with patch(
             "kume.services.nodes.format_response._call_formatter_llm",
+            new_callable=AsyncMock,
             return_value="Hola Carlos!",
         ) as mock_llm:
-            format_response(state)
+            await format_response(state)
 
-        mock_llm.assert_called_once_with("Eat balanced meals.", "Carlos", "es")
+        mock_llm.assert_awaited_once_with("Eat balanced meals.", "Carlos", "es")
 
-    def test_empty_messages_returns_fallback(self) -> None:
+    async def test_empty_messages_returns_fallback(self) -> None:
         """When there are no AIMessages, return a fallback without calling LLM."""
         state = {
             "messages": [HumanMessage(content="Hello")],
@@ -66,13 +68,14 @@ class TestFormatResponse:
 
         with patch(
             "kume.services.nodes.format_response._call_formatter_llm",
+            new_callable=AsyncMock,
         ) as mock_llm:
-            result = format_response(state)
+            result = await format_response(state)
 
-        mock_llm.assert_not_called()
+        mock_llm.assert_not_awaited()
         assert result["formatted_response"] == "How can I help with your nutrition goals today?"
 
-    def test_exception_returns_raw_as_fallback(self) -> None:
+    async def test_exception_returns_raw_as_fallback(self) -> None:
         """When the LLM raises an exception, return the raw response."""
         state = {
             "messages": [
@@ -85,14 +88,15 @@ class TestFormatResponse:
 
         with patch(
             "kume.services.nodes.format_response._call_formatter_llm",
+            new_callable=AsyncMock,
             side_effect=Exception("LLM connection failed"),
         ):
-            result = format_response(state)
+            result = await format_response(state)
 
         assert result["formatted_response"] == "Eat more fiber."
         assert result["raw_agent_response"] == "Eat more fiber."
 
-    def test_extracts_from_structured_content(self) -> None:
+    async def test_extracts_from_structured_content(self) -> None:
         """The node uses _extract_text_content for structured AIMessage content."""
         state = {
             "messages": [
@@ -105,9 +109,10 @@ class TestFormatResponse:
 
         with patch(
             "kume.services.nodes.format_response._call_formatter_llm",
+            new_callable=AsyncMock,
             return_value="Formatted structured response.",
         ):
-            result = format_response(state)
+            result = await format_response(state)
 
         assert result["raw_agent_response"] == "Structured response."
         assert result["formatted_response"] == "Formatted structured response."

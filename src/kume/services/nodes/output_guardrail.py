@@ -31,7 +31,7 @@ Respond with ONLY a JSON object (no markdown, no extra text):
 OUTPUT_GUARDRAIL_PROMPT = _OUTPUT_GUARDRAIL_SYSTEM_PROMPT
 
 
-def _call_guardrail_llm(agent_response: str) -> str:
+async def _call_guardrail_llm(agent_response: str) -> str:
     """Call gpt-4o-mini for output safety classification.
 
     Separated from the node function for testability.
@@ -39,7 +39,7 @@ def _call_guardrail_llm(agent_response: str) -> str:
     from langchain_openai import ChatOpenAI
 
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-    response = llm.invoke(
+    response = await llm.ainvoke(
         [
             {"role": "system", "content": _OUTPUT_GUARDRAIL_SYSTEM_PROMPT},
             {
@@ -51,7 +51,7 @@ def _call_guardrail_llm(agent_response: str) -> str:
     return str(response.content)
 
 
-def output_guardrail(state: dict[str, Any]) -> dict[str, Any]:
+async def output_guardrail(state: dict[str, Any]) -> dict[str, Any]:
     """Screen the agent's response for safety issues.
 
     Validates the ``formatted_response`` (set by the upstream
@@ -79,7 +79,7 @@ def output_guardrail(state: dict[str, Any]) -> dict[str, Any]:
                 break
 
     try:
-        raw = _call_guardrail_llm(text_to_check)
+        raw = await _call_guardrail_llm(text_to_check)
         parsed = json.loads(raw)
         is_safe = parsed.get("safe", True)
         if not isinstance(is_safe, bool):

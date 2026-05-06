@@ -20,7 +20,7 @@ Conversation:
 """
 
 
-def _call_summarize_llm(conversation_text: str) -> str:
+async def _call_summarize_llm(conversation_text: str) -> str:
     """Call gpt-4o-mini to summarize older conversation messages.
 
     Separated from the node function for testability.
@@ -29,7 +29,7 @@ def _call_summarize_llm(conversation_text: str) -> str:
 
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
     prompt = SUMMARIZE_PROMPT.format(conversation=conversation_text)
-    response = llm.invoke(prompt)
+    response = await llm.ainvoke(prompt)
     return str(response.content)
 
 
@@ -42,7 +42,7 @@ def _messages_to_text(messages: list[BaseMessage]) -> str:
     return "\n".join(lines)
 
 
-def manage_memory(state: dict[str, Any], threshold: int = 20) -> dict[str, Any]:
+async def manage_memory(state: dict[str, Any], threshold: int = 20) -> dict[str, Any]:
     """Compress conversation history when it exceeds the threshold.
 
     If the message count is at or below *threshold*, returns without
@@ -61,7 +61,7 @@ def manage_memory(state: dict[str, Any], threshold: int = 20) -> dict[str, Any]:
 
     conversation_text = _messages_to_text(older)
     try:
-        summary = _call_summarize_llm(conversation_text)
+        summary = await _call_summarize_llm(conversation_text)
     except Exception:
         logger.warning("Memory summarization failed, keeping full history", exc_info=True)
         return {"memory_summarized": False}

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
@@ -43,14 +43,17 @@ def _patch_guardrails_and_formatter():
     with (
         patch(
             "kume.services.nodes.input_guardrail._call_guardrail_llm",
+            new_callable=AsyncMock,
             return_value='{"safe": true, "category": null, "reason": "ok"}',
         ),
         patch(
             "kume.services.nodes.output_guardrail._call_guardrail_llm",
+            new_callable=AsyncMock,
             return_value='{"safe": true, "category": null, "reason": "ok"}',
         ),
         patch(
             "kume.services.nodes.format_response._call_formatter_llm",
+            new_callable=AsyncMock,
             return_value="Formatted: Agent response about nutrition.",
         ),
     ):
@@ -63,14 +66,17 @@ def _patch_guardrails_input_blocked():
     with (
         patch(
             "kume.services.nodes.input_guardrail._call_guardrail_llm",
+            new_callable=AsyncMock,
             return_value='{"safe": false, "category": "prompt_injection", "reason": "injection attempt"}',
         ),
         patch(
             "kume.services.nodes.output_guardrail._call_guardrail_llm",
+            new_callable=AsyncMock,
             return_value='{"safe": true, "category": null, "reason": "ok"}',
         ),
         patch(
             "kume.services.nodes.format_response._call_formatter_llm",
+            new_callable=AsyncMock,
             return_value="Should not reach here",
         ),
     ):
