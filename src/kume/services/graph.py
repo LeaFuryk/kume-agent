@@ -2,10 +2,14 @@
 
 Wires all nodes into a graph with guardrail routing:
 
-    manage_memory -> input_guardrail -> agent -> output_guardrail -> format_response -> END
-                          |                            |
-                          v                            v
-                    block_response               block_response
+    manage_memory -> input_guardrail -> agent -> format_response -> output_guardrail -> END
+                          |                                              |
+                          v                                              v
+                    block_response                                 block_response
+
+The output guardrail runs AFTER format_response so it validates the final
+text the user will see, preventing the formatter LLM from introducing
+unsafe content that bypasses the guardrail.
 """
 
 from __future__ import annotations
@@ -32,9 +36,9 @@ def _route_after_input_guardrail(state: dict[str, Any]) -> str:
 
 
 def _route_after_output_guardrail(state: dict[str, Any]) -> str:
-    """Route to formatter if output is safe, otherwise block."""
+    """Route to END if output is safe, otherwise block."""
     if state.get("output_safe", True):
-        return "format_response"
+        return END
     return "block_response"
 
 
@@ -80,13 +84,13 @@ def build_graph(
         _route_after_input_guardrail,
         {"agent": "agent", "block_response": "block_response"},
     )
-    graph.add_edge("agent", "output_guardrail")
+    graph.add_edge("agent", "format_response")
+    graph.add_edge("format_response", "output_guardrail")
     graph.add_conditional_edges(
         "output_guardrail",
         _route_after_output_guardrail,
-        {"format_response": "format_response", "block_response": "block_response"},
+        {END: END, "block_response": "block_response"},
     )
-    graph.add_edge("format_response", END)
     graph.add_edge("block_response", END)
 
     return graph.compile()

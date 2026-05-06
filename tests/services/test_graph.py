@@ -36,7 +36,10 @@ async def _mock_agent(state: dict[str, Any]) -> dict[str, Any]:
 
 @pytest.fixture()
 def _patch_guardrails_and_formatter():
-    """Patch all LLM calls in guardrails and formatter to avoid real API calls."""
+    """Patch all LLM calls in guardrails and formatter to avoid real API calls.
+
+    Flow: manage_memory -> input_guardrail -> agent -> format_response -> output_guardrail -> END
+    """
     with (
         patch(
             "kume.services.nodes.input_guardrail._call_guardrail_llm",

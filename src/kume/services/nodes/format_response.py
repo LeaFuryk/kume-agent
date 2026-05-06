@@ -5,6 +5,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from langchain_core.messages import AIMessage
+
+from kume.services.orchestrator import _extract_text_content
 from kume.services.prompts import FORMATTER_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -32,19 +35,28 @@ def _call_formatter_llm(raw: str, user_name: str | None, language: str) -> str:
 def format_response(state: dict[str, Any]) -> dict[str, Any]:
     """Reformat the raw agent response for Telegram delivery.
 
-    If ``raw_agent_response`` is empty, returns a generic fallback without
-    calling the LLM.  On any exception, returns the raw response as-is.
+    Extracts ``raw_agent_response`` from the last AIMessage in the
+    conversation (since this node now runs before the output guardrail).
+    If no AIMessage is found, returns a generic fallback without calling
+    the LLM.  On any exception, returns the raw response as-is.
     """
-    raw = state.get("raw_agent_response", "")
+    # Extract raw_agent_response from the last AIMessage
+    messages = state.get("messages", [])
+    raw = ""
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage):
+            raw = _extract_text_content(msg.content)
+            break
+
     user_name = state.get("user_name")
     language = state.get("user_language", "en")
 
     if not raw:
-        return {"formatted_response": FALLBACK_MESSAGE}
+        return {"raw_agent_response": "", "formatted_response": FALLBACK_MESSAGE}
 
     try:
         formatted = _call_formatter_llm(raw, user_name, language)
-        return {"formatted_response": formatted}
+        return {"raw_agent_response": raw, "formatted_response": formatted}
     except Exception:
         logger.exception("Formatter LLM failed, returning raw response")
-        return {"formatted_response": raw}
+        return {"raw_agent_response": raw, "formatted_response": raw}

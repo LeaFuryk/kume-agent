@@ -40,26 +40,33 @@ def _call_guardrail_llm(agent_response: str) -> str:
 
 
 def output_guardrail(state: dict[str, Any]) -> dict[str, Any]:
-    """Screen the agent's latest response for safety issues.
+    """Screen the agent's response for safety issues.
+
+    Validates the ``formatted_response`` (set by the upstream
+    ``format_response`` node) so the guardrail checks the *final* text
+    the user will see.  Falls back to the last ``AIMessage`` if
+    ``formatted_response`` is not yet populated.
 
     Returns ``output_safe=True`` and ``guardrail_violation=None`` when the
     response is safe.  On a detected issue, ``output_safe=False`` and
     ``guardrail_violation`` is set to the issue category.
 
-    Also captures ``raw_agent_response`` for downstream formatting.
-
     Fails open: if the LLM response is malformed JSON, the response is
     treated as safe.
     """
-    # Extract the last AIMessage
-    messages = state.get("messages", [])
-    agent_response = ""
-    for msg in reversed(messages):
-        if isinstance(msg, AIMessage):
-            agent_response = str(msg.content)
-            break
+    # Prefer formatted_response (set by format_response node upstream),
+    # fall back to raw_agent_response or last AIMessage.
+    text_to_check = state.get("formatted_response", "")
+    if not text_to_check:
+        text_to_check = state.get("raw_agent_response", "")
+    if not text_to_check:
+        messages = state.get("messages", [])
+        for msg in reversed(messages):
+            if isinstance(msg, AIMessage):
+                text_to_check = str(msg.content)
+                break
 
-    raw = _call_guardrail_llm(agent_response)
+    raw = _call_guardrail_llm(text_to_check)
 
     try:
         parsed = json.loads(raw)
@@ -72,6 +79,5 @@ def output_guardrail(state: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "output_safe": is_safe,
-        "raw_agent_response": agent_response,
         "guardrail_violation": category,
     }
