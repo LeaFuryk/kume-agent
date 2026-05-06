@@ -86,7 +86,7 @@ class TestDailySummaryTool:
             ),
         ]
         tool = self._make_tool(user_id="u1", meals=meals)
-        result = await tool.ainvoke({"date": "today"})
+        result = await tool.ainvoke({})
 
         assert "Daily Summary" in result
         assert "Meals logged: 2" in result
@@ -96,7 +96,7 @@ class TestDailySummaryTool:
     @pytest.mark.asyncio
     async def test_daily_summary_no_meals(self) -> None:
         tool = self._make_tool(user_id="u1", meals=[])
-        result = await tool.ainvoke({"date": "today"})
+        result = await tool.ainvoke({})
 
         assert "No meals logged today" in result
 
@@ -105,7 +105,7 @@ class TestDailySummaryTool:
         meals = [_make_meal(user_id="u1", calories=800.0, protein_g=50.0)]
         goals = [_make_goal(user_id="u1")]
         tool = self._make_tool(user_id="u1", meals=meals, goals=goals)
-        result = await tool.ainvoke({"date": "today"})
+        result = await tool.ainvoke({})
 
         assert "Daily Summary" in result
         assert "Eat 2000 kcal per day" in result
@@ -117,6 +117,6 @@ class TestDailySummaryTool:
         goal_repo = FakeGoalRepository()
         tool = RequestReportTool(meal_repo=meal_repo, goal_repo=goal_repo)
         _current.set(None)
-        result = await tool.ainvoke({"date": "today"})
+        result = await tool.ainvoke({})
 
         assert "no user context" in result.lower()

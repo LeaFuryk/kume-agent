@@ -9,30 +9,24 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from langchain_core.tools import BaseTool
-from pydantic import BaseModel, Field
 
 from kume.domain.nutrition_summary import aggregate_nutrition, compare_against_goals
 from kume.infrastructure.request_context import get_context as get_request_context
 from kume.ports.output.repositories import GoalRepository, MealRepository
 
 
-class DailySummaryInput(BaseModel):
-    date: str = Field(default="today", description="Date for the summary, defaults to today")
-
-
 class RequestReportTool(BaseTool):
     name: str = "request_report"
     description: str = (
-        "Generate a daily nutrition summary. Shows total calories, protein, carbs, "
+        "Generate a daily nutrition summary for today. Shows total calories, protein, carbs, "
         "fat consumed today vs the user's goals. Call this when the user asks for "
         "a summary, daily report, or 'how did I eat today?'"
     )
-    args_schema: type[BaseModel] = DailySummaryInput
     meal_repo: MealRepository
     goal_repo: GoalRepository
     model_config = {"arbitrary_types_allowed": True}
 
-    async def _arun(self, date: str = "today") -> str:
+    async def _arun(self, **kwargs: object) -> str:
         ctx = get_request_context()
         if not ctx:
             return "Unable to generate summary — no user context available."
@@ -53,5 +47,5 @@ class RequestReportTool(BaseTool):
         totals = aggregate_nutrition(meals)
         return compare_against_goals(totals, goals)
 
-    def _run(self, date: str = "today") -> str:
+    def _run(self, **kwargs: object) -> str:
         return "This tool must be called asynchronously."
