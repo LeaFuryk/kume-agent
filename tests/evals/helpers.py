@@ -148,16 +148,19 @@ async def run_eval(
     """Run a single eval case through the orchestrator and capture tool calls + cost."""
     capture = _ToolAndCostCapture()
 
-    original_ainvoke = orchestrator._agent.ainvoke
+    original_ainvoke = orchestrator._graph.ainvoke
 
-    async def _capturing_ainvoke(input_data: Any, config: Any = None, **kwargs: Any) -> Any:
-        if config and "callbacks" in config:
+    async def _capturing_ainvoke(state: Any, config: Any = None, **kwargs: Any) -> Any:
+        # Inject the capture callback into the graph invocation config
+        if config is None:
+            config = {}
+        if "callbacks" in config:
             config["callbacks"].append(capture)
-        elif config:
+        else:
             config["callbacks"] = [capture]
-        return await original_ainvoke(input_data, config=config, **kwargs)
+        return await original_ainvoke(state, config=config, **kwargs)
 
-    orchestrator._agent.ainvoke = _capturing_ainvoke
+    orchestrator._graph.ainvoke = _capturing_ainvoke
 
     try:
         full_message = user_message
@@ -171,7 +174,7 @@ async def run_eval(
         )
         response_text = result.text if hasattr(result, "text") else str(result)
     finally:
-        orchestrator._agent.ainvoke = original_ainvoke
+        orchestrator._graph.ainvoke = original_ainvoke
 
     return EvalResult(
         tool_calls=capture.tool_calls,

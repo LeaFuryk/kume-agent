@@ -2,17 +2,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
-from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
-from langchain_core.tools import BaseTool
+from langchain_core.messages import AIMessage, HumanMessage
 
 from kume.domain.conversation import ConversationEvent
 from kume.infrastructure.image_store import ImageStore
-from kume.infrastructure.metrics import MetricsCallbackHandler, ReasoningCallbackHandler
 from kume.infrastructure.request_context import get_context
 from kume.infrastructure.session_store import SessionStore
 from kume.ports.output.messaging import MessagingPort
@@ -20,161 +16,113 @@ from kume.services.orchestrator import OrchestratorService, ProcessResult, Resou
 from tests.adapters.tools.conftest import FakeUserRepository
 
 
-class FakeChatModel(BaseChatModel):
-    """A minimal BaseChatModel implementation for testing."""
-
-    response_text: str = "fake response"
-
-    @property
-    def _llm_type(self) -> str:
-        return "fake"
-
-    def _generate(
-        self,
-        messages: list[BaseMessage],
-        stop: list[str] | None = None,
-        run_manager: Any = None,
-        **kwargs: Any,
-    ) -> ChatResult:
-        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=self.response_text))])
-
-
-class FakeTool(BaseTool):
-    """A minimal tool for constructing the agent."""
-
-    name: str = "fake_tool"
-    description: str = "A fake tool for testing"
-
-    def _run(self, query: str = "") -> str:
-        return "fake tool result"
+def _make_mock_graph(formatted_response: str = "fake response") -> AsyncMock:
+    """Create a mock graph whose ainvoke returns a dict with formatted_response."""
+    mock = AsyncMock()
+    mock.ainvoke.return_value = {"formatted_response": formatted_response}
+    return mock
 
 
 @pytest.fixture()
-def fake_llm() -> FakeChatModel:
-    return FakeChatModel()
+def mock_graph() -> AsyncMock:
+    return _make_mock_graph()
 
 
 @pytest.fixture()
-def fake_tools() -> list[BaseTool]:
-    return [FakeTool()]
-
-
-@pytest.fixture()
-def orchestrator(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> OrchestratorService:
-    return OrchestratorService(
-        llm=fake_llm,
-        tools=fake_tools,
-    )
+def orchestrator(mock_graph: AsyncMock) -> OrchestratorService:
+    return OrchestratorService(graph=mock_graph)
 
 
 async def test_process_returns_process_result(orchestrator: OrchestratorService) -> None:
-    with patch.object(
-        orchestrator._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={"messages": [AIMessage(content="Here is your nutrition advice.")]},
-    ):
-        result = await orchestrator.process(telegram_id=12345, user_message="What should I eat?")
+    result = await orchestrator.process(telegram_id=12345, user_message="What should I eat?")
 
     assert isinstance(result, ProcessResult)
-    assert result.text == "Here is your nutrition advice."
+    assert result.text == "fake response"
     assert result.streamed is False
 
 
 async def test_process_returns_fallback_on_exception(orchestrator: OrchestratorService) -> None:
-    with patch.object(
-        orchestrator._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        side_effect=RuntimeError("LLM connection failed"),
-    ):
-        result = await orchestrator.process(telegram_id=12345, user_message="Hello")
+    orchestrator._graph.ainvoke.side_effect = RuntimeError("LLM connection failed")
+
+    result = await orchestrator.process(telegram_id=12345, user_message="Hello")
 
     assert result.text == "Sorry, something went wrong. Please try again."
     assert result.streamed is False
 
 
-async def test_process_passes_callback_handler(orchestrator: OrchestratorService) -> None:
-    with patch.object(
-        orchestrator._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={"messages": [AIMessage(content="ok")]},
-    ) as mock_ainvoke:
-        await orchestrator.process(telegram_id=1, user_message="test")
+async def test_process_returns_default_when_formatted_response_empty(mock_graph: AsyncMock) -> None:
+    mock_graph.ainvoke.return_value = {"formatted_response": ""}
+    orch = OrchestratorService(graph=mock_graph)
 
-    mock_ainvoke.assert_called_once()
-    call_kwargs = mock_ainvoke.call_args
-    config = call_kwargs.kwargs.get("config") or call_kwargs[1].get("config")
-    callbacks = config["callbacks"]
-    assert len(callbacks) == 2
-    assert isinstance(callbacks[0], MetricsCallbackHandler)
-    assert isinstance(callbacks[1], ReasoningCallbackHandler)
-
-
-async def test_process_returns_default_when_messages_empty(orchestrator: OrchestratorService) -> None:
-    with patch.object(
-        orchestrator._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={"messages": []},
-    ):
-        result = await orchestrator.process(telegram_id=1, user_message="test")
+    result = await orch.process(telegram_id=1, user_message="test")
 
     assert result.text == "I wasn't able to process that request."
     assert result.streamed is False
 
 
-async def test_process_returns_default_when_messages_key_missing(orchestrator: OrchestratorService) -> None:
-    with patch.object(
-        orchestrator._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={},
-    ):
-        result = await orchestrator.process(telegram_id=1, user_message="test")
+async def test_process_returns_default_when_formatted_response_missing(mock_graph: AsyncMock) -> None:
+    mock_graph.ainvoke.return_value = {}
+    orch = OrchestratorService(graph=mock_graph)
+
+    result = await orch.process(telegram_id=1, user_message="test")
 
     assert result.text == "I wasn't able to process that request."
     assert result.streamed is False
 
 
-async def test_process_handles_structured_content_blocks(orchestrator: OrchestratorService) -> None:
-    """process() extracts text from structured content blocks instead of leaking repr."""
-    structured_content = [{"type": "text", "text": "Hello from structured block"}]
-    with patch.object(
-        orchestrator._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={"messages": [AIMessage(content=structured_content)]},
-    ):
-        result = await orchestrator.process(telegram_id=1, user_message="test")
+async def test_process_handles_whitespace_only_response(mock_graph: AsyncMock) -> None:
+    """process() treats whitespace-only formatted_response as empty."""
+    mock_graph.ainvoke.return_value = {"formatted_response": "   "}
+    orch = OrchestratorService(graph=mock_graph)
 
-    assert result.text == "Hello from structured block"
-    assert "[{" not in result.text
+    result = await orch.process(telegram_id=1, user_message="test")
+
+    assert result.text == "I wasn't able to process that request."
+    assert result.streamed is False
 
 
-async def test_process_sets_request_context_via_contextvar(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
-    """process() sets RequestContext contextvar during agent invocation."""
+async def test_process_sets_request_context_via_contextvar() -> None:
+    """process() sets RequestContext contextvar during graph invocation."""
     user_repo = FakeUserRepository()
-    orch = OrchestratorService(llm=fake_llm, tools=fake_tools, user_repo=user_repo)
+    mock_graph = _make_mock_graph("ok")
 
     captured_ctx = None
 
-    async def capture_context(*args: Any, **kwargs: Any) -> dict:
+    async def capture_context(state: dict[str, Any]) -> dict:
         nonlocal captured_ctx
         captured_ctx = get_context()
-        return {"messages": [AIMessage(content="ok")]}
+        return {"formatted_response": "ok"}
 
-    with patch.object(orch._agent, "ainvoke", new_callable=AsyncMock, side_effect=capture_context):
-        await orch.process(telegram_id=99, user_message="hi")
+    mock_graph.ainvoke.side_effect = capture_context
+    orch = OrchestratorService(graph=mock_graph, user_repo=user_repo)
 
-    # Context is set during the agent call (cleared in finally)
+    await orch.process(telegram_id=99, user_message="hi")
+
+    # Context is set during the graph call (cleared in finally)
     assert captured_ctx is not None
     assert captured_ctx.user_id == "fake-user"
     assert captured_ctx.telegram_id == 99
     assert captured_ctx.language == "en"
     # After process() returns, context should be cleared
     assert get_context() is None
+
+
+async def test_graph_receives_state_fields() -> None:
+    """Verify the graph is invoked with all expected state fields."""
+    mock_graph = _make_mock_graph("response")
+    orch = OrchestratorService(graph=mock_graph)
+
+    await orch.process(telegram_id=1, user_message="test", language="es")
+
+    mock_graph.ainvoke.assert_called_once()
+    state = mock_graph.ainvoke.call_args[0][0]
+    assert state["user_language"] == "es"
+    assert state["input_safe"] is True
+    assert state["output_safe"] is True
+    assert state["guardrail_violation"] is None
+    assert state["formatted_response"] == ""
+    assert state["memory_summarized"] is False
+    assert state["tool_error_count"] == 0
 
 
 # --- _extract_text_content tests ---
@@ -201,8 +149,8 @@ def test_extract_text_content_mixed_list() -> None:
 # --- Session & Image store tests ---
 
 
-async def test_session_history_loaded(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
-    """Session events are converted to HumanMessage/AIMessage and prepended to agent input."""
+async def test_session_history_loaded() -> None:
+    """Session events are converted to HumanMessage/AIMessage and prepended to graph input."""
     user_repo = FakeUserRepository()
     session_store = SessionStore()
     now = datetime.now(UTC)
@@ -217,24 +165,18 @@ async def test_session_history_loaded(fake_llm: FakeChatModel, fake_tools: list[
         ConversationEvent(id="e2", user_id="fake-user", role="assistant", content="previous answer", created_at=now),
     )
 
+    mock_graph = _make_mock_graph("current response")
     orch = OrchestratorService(
-        llm=fake_llm,
-        tools=fake_tools,
+        graph=mock_graph,
         user_repo=user_repo,
         session_store=session_store,
     )
 
-    with patch.object(
-        orch._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={"messages": [AIMessage(content="current response")]},
-    ) as mock_ainvoke:
-        await orch.process(telegram_id=99, user_message="current question")
+    await orch.process(telegram_id=99, user_message="current question")
 
-    # Verify the messages passed to agent include history
-    call_args = mock_ainvoke.call_args
-    passed_messages = call_args[0][0]["messages"] if call_args[0] else call_args.kwargs["messages"]
+    # Verify the messages passed to graph include history
+    call_args = mock_graph.ainvoke.call_args
+    passed_messages = call_args[0][0]["messages"]
     assert len(passed_messages) == 3
     assert isinstance(passed_messages[0], HumanMessage)
     assert passed_messages[0].content == "previous question"
@@ -243,25 +185,19 @@ async def test_session_history_loaded(fake_llm: FakeChatModel, fake_tools: list[
     assert isinstance(passed_messages[2], HumanMessage)
 
 
-async def test_events_saved_after_response(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
+async def test_events_saved_after_response() -> None:
     """SessionStore.add is called with user + assistant events after a successful response."""
     user_repo = FakeUserRepository()
     session_store = SessionStore()
+    mock_graph = _make_mock_graph("bot reply")
 
     orch = OrchestratorService(
-        llm=fake_llm,
-        tools=fake_tools,
+        graph=mock_graph,
         user_repo=user_repo,
         session_store=session_store,
     )
 
-    with patch.object(
-        orch._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={"messages": [AIMessage(content="bot reply")]},
-    ):
-        await orch.process(telegram_id=99, user_message="hello")
+    await orch.process(telegram_id=99, user_message="hello")
 
     # Session should now contain 2 events (user + assistant)
     events = session_store.get_session("fake-user")
@@ -272,14 +208,14 @@ async def test_events_saved_after_response(fake_llm: FakeChatModel, fake_tools: 
     assert events[1].content == "bot reply"
 
 
-async def test_images_set_and_cleared(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
+async def test_images_set_and_cleared() -> None:
     """ImageStore.set_images is called with image bytes and clear is called after."""
     user_repo = FakeUserRepository()
     image_store = ImageStore()
+    mock_graph = _make_mock_graph("analyzed")
 
     orch = OrchestratorService(
-        llm=fake_llm,
-        tools=fake_tools,
+        graph=mock_graph,
         user_repo=user_repo,
         image_store=image_store,
     )
@@ -289,33 +225,28 @@ async def test_images_set_and_cleared(fake_llm: FakeChatModel, fake_tools: list[
         Resource(mime_type="application/pdf", transcript="a pdf doc", raw_bytes=b"pdf-bytes"),
     ]
 
-    with patch.object(
-        orch._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={"messages": [AIMessage(content="analyzed")]},
-    ) as mock_ainvoke:
-        # Intercept to check images are set during invocation
-        async def check_images_set(*args: Any, **kwargs: Any) -> dict:
-            # Images should be stored at this point (before clear)
-            assert image_store._data  # at least one request_id has images
-            return {"messages": [AIMessage(content="analyzed")]}
+    # Intercept to check images are set during invocation
+    async def check_images_set(state: dict[str, Any]) -> dict:
+        # Images should be stored at this point (before clear)
+        assert image_store._data  # at least one request_id has images
+        return {"formatted_response": "analyzed"}
 
-        mock_ainvoke.side_effect = check_images_set
-        result = await orch.process(telegram_id=99, user_message="analyze", resources=resources)
+    mock_graph.ainvoke.side_effect = check_images_set
+    result = await orch.process(telegram_id=99, user_message="analyze", resources=resources)
 
     assert result.text == "analyzed"
     # After process() returns, images should be cleared
     assert len(image_store._data) == 0
 
 
-async def test_images_cleared_on_exception(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
-    """ImageStore.clear is called even when the agent raises an exception."""
+async def test_images_cleared_on_exception() -> None:
+    """ImageStore.clear is called even when the graph raises an exception."""
     image_store = ImageStore()
+    mock_graph = _make_mock_graph()
+    mock_graph.ainvoke.side_effect = RuntimeError("boom")
 
     orch = OrchestratorService(
-        llm=fake_llm,
-        tools=fake_tools,
+        graph=mock_graph,
         image_store=image_store,
     )
 
@@ -323,13 +254,7 @@ async def test_images_cleared_on_exception(fake_llm: FakeChatModel, fake_tools: 
         Resource(mime_type="image/png", transcript="a photo", raw_bytes=b"png-bytes"),
     ]
 
-    with patch.object(
-        orch._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        side_effect=RuntimeError("boom"),
-    ):
-        result = await orch.process(telegram_id=1, user_message="test", resources=resources)
+    result = await orch.process(telegram_id=1, user_message="test", resources=resources)
 
     assert result.text == "Sorry, something went wrong. Please try again."
     # Images should still be cleared in the finally block
@@ -338,117 +263,96 @@ async def test_images_cleared_on_exception(fake_llm: FakeChatModel, fake_tools: 
 
 async def test_backward_compat_no_stores(orchestrator: OrchestratorService) -> None:
     """Existing behavior is unchanged when session_store and image_store are None."""
-    with patch.object(
-        orchestrator._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={"messages": [AIMessage(content="works fine")]},
-    ):
-        result = await orchestrator.process(telegram_id=12345, user_message="hi there")
+    result = await orchestrator.process(telegram_id=12345, user_message="hi there")
 
-    assert result.text == "works fine"
+    assert result.text == "fake response"
 
 
 # --- Language instruction tests ---
 
 
-async def test_language_instruction_included_when_language_provided(
-    fake_llm: FakeChatModel, fake_tools: list[BaseTool]
-) -> None:
+async def test_language_instruction_included_when_language_provided() -> None:
     """When language is provided, a '[Respond in: ...]' instruction appears in the message."""
     user_repo = FakeUserRepository()
-    orch = OrchestratorService(llm=fake_llm, tools=fake_tools, user_repo=user_repo)
+    mock_graph = _make_mock_graph("Hola")
+    orch = OrchestratorService(graph=mock_graph, user_repo=user_repo)
 
-    with patch.object(
-        orch._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={"messages": [AIMessage(content="Hola")]},
-    ) as mock_ainvoke:
-        await orch.process(telegram_id=99, user_message="hi", language="es")
+    await orch.process(telegram_id=99, user_message="hi", language="es")
 
-    call_args = mock_ainvoke.call_args
-    passed_messages = call_args[0][0]["messages"] if call_args[0] else call_args.kwargs["messages"]
+    call_args = mock_graph.ainvoke.call_args
+    passed_messages = call_args[0][0]["messages"]
     human_msg = passed_messages[-1]
     assert isinstance(human_msg, HumanMessage)
     assert "[Respond in: Spanish]" in human_msg.content
 
 
-async def test_no_language_instruction_when_language_is_none(
-    fake_llm: FakeChatModel, fake_tools: list[BaseTool]
-) -> None:
+async def test_no_language_instruction_when_language_is_none() -> None:
     """When language is None, no '[Respond in: ...]' instruction appears in the message."""
     user_repo = FakeUserRepository()
-    orch = OrchestratorService(llm=fake_llm, tools=fake_tools, user_repo=user_repo)
+    mock_graph = _make_mock_graph("Hello")
+    orch = OrchestratorService(graph=mock_graph, user_repo=user_repo)
 
-    with patch.object(
-        orch._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={"messages": [AIMessage(content="Hello")]},
-    ) as mock_ainvoke:
-        await orch.process(telegram_id=99, user_message="hi", language=None)
+    await orch.process(telegram_id=99, user_message="hi", language=None)
 
-    call_args = mock_ainvoke.call_args
-    passed_messages = call_args[0][0]["messages"] if call_args[0] else call_args.kwargs["messages"]
+    call_args = mock_graph.ainvoke.call_args
+    passed_messages = call_args[0][0]["messages"]
     human_msg = passed_messages[-1]
     assert isinstance(human_msg, HumanMessage)
     assert "[Respond in:" not in human_msg.content
 
 
-async def test_language_sets_request_context(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
+async def test_language_sets_request_context() -> None:
     """When language is provided, RequestContext.language reflects it."""
     user_repo = FakeUserRepository()
-    orch = OrchestratorService(llm=fake_llm, tools=fake_tools, user_repo=user_repo)
+    mock_graph = _make_mock_graph("ok")
 
     captured_ctx = None
 
-    async def capture_context(*args: Any, **kwargs: Any) -> dict:
+    async def capture_context(state: dict[str, Any]) -> dict:
         nonlocal captured_ctx
         captured_ctx = get_context()
-        return {"messages": [AIMessage(content="ok")]}
+        return {"formatted_response": "ok"}
 
-    with patch.object(orch._agent, "ainvoke", new_callable=AsyncMock, side_effect=capture_context):
-        await orch.process(telegram_id=99, user_message="hi", language="pt")
+    mock_graph.ainvoke.side_effect = capture_context
+    orch = OrchestratorService(graph=mock_graph, user_repo=user_repo)
+
+    await orch.process(telegram_id=99, user_message="hi", language="pt")
 
     assert captured_ctx is not None
     assert captured_ctx.language == "pt"
 
 
-async def test_language_defaults_to_en_when_none(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
+async def test_language_defaults_to_en_when_none() -> None:
     """When language is None, RequestContext.language defaults to 'en'."""
     user_repo = FakeUserRepository()
-    orch = OrchestratorService(llm=fake_llm, tools=fake_tools, user_repo=user_repo)
+    mock_graph = _make_mock_graph("ok")
 
     captured_ctx = None
 
-    async def capture_context(*args: Any, **kwargs: Any) -> dict:
+    async def capture_context(state: dict[str, Any]) -> dict:
         nonlocal captured_ctx
         captured_ctx = get_context()
-        return {"messages": [AIMessage(content="ok")]}
+        return {"formatted_response": "ok"}
 
-    with patch.object(orch._agent, "ainvoke", new_callable=AsyncMock, side_effect=capture_context):
-        await orch.process(telegram_id=99, user_message="hi", language=None)
+    mock_graph.ainvoke.side_effect = capture_context
+    orch = OrchestratorService(graph=mock_graph, user_repo=user_repo)
+
+    await orch.process(telegram_id=99, user_message="hi", language=None)
 
     assert captured_ctx is not None
     assert captured_ctx.language == "en"
 
 
-async def test_unknown_language_code_used_as_is(fake_llm: FakeChatModel, fake_tools: list[BaseTool]) -> None:
+async def test_unknown_language_code_used_as_is() -> None:
     """When language code is not in the mapping, the raw code is used."""
     user_repo = FakeUserRepository()
-    orch = OrchestratorService(llm=fake_llm, tools=fake_tools, user_repo=user_repo)
+    mock_graph = _make_mock_graph("ok")
+    orch = OrchestratorService(graph=mock_graph, user_repo=user_repo)
 
-    with patch.object(
-        orch._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={"messages": [AIMessage(content="ok")]},
-    ) as mock_ainvoke:
-        await orch.process(telegram_id=99, user_message="hi", language="ja")
+    await orch.process(telegram_id=99, user_message="hi", language="ja")
 
-    call_args = mock_ainvoke.call_args
-    passed_messages = call_args[0][0]["messages"] if call_args[0] else call_args.kwargs["messages"]
+    call_args = mock_graph.ainvoke.call_args
+    passed_messages = call_args[0][0]["messages"]
     human_msg = passed_messages[-1]
     assert "[Respond in: ja]" in human_msg.content
 
@@ -465,44 +369,26 @@ def mock_messaging() -> AsyncMock:
 
 async def test_streaming_sends_placeholder(orchestrator: OrchestratorService, mock_messaging: AsyncMock) -> None:
     """Verify send_and_get_id is called when messaging+chat_id are provided."""
-    with patch.object(
-        orchestrator._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={"messages": [AIMessage(content="streamed response")]},
-    ):
-        result = await orchestrator.process(telegram_id=1, user_message="test", messaging=mock_messaging, chat_id=99)
+    result = await orchestrator.process(telegram_id=1, user_message="test", messaging=mock_messaging, chat_id=99)
 
     mock_messaging.send_and_get_id.assert_awaited_once_with(99, "...")
-    assert result.text == "streamed response"
+    assert result.text == "fake response"
 
 
 async def test_streaming_result_streamed_true(orchestrator: OrchestratorService, mock_messaging: AsyncMock) -> None:
     """Verify result.streamed is True when streaming setup succeeds."""
-    with patch.object(
-        orchestrator._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={"messages": [AIMessage(content="streamed response")]},
-    ):
-        result = await orchestrator.process(telegram_id=1, user_message="test", messaging=mock_messaging, chat_id=99)
+    result = await orchestrator.process(telegram_id=1, user_message="test", messaging=mock_messaging, chat_id=99)
 
     assert result.streamed is True
 
 
 async def test_placeholder_edited_with_response(orchestrator: OrchestratorService, mock_messaging: AsyncMock) -> None:
     """Verify placeholder message is edited with the final response."""
-    with patch.object(
-        orchestrator._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={"messages": [AIMessage(content="final answer")]},
-    ):
-        result = await orchestrator.process(telegram_id=1, user_message="test", messaging=mock_messaging, chat_id=99)
+    result = await orchestrator.process(telegram_id=1, user_message="test", messaging=mock_messaging, chat_id=99)
 
     # Placeholder sent, then edited with final response
     mock_messaging.send_and_get_id.assert_awaited_once_with(99, "...")
-    mock_messaging.edit_message.assert_awaited_once_with(99, 42, "final answer")
+    mock_messaging.edit_message.assert_awaited_once_with(99, 42, "fake response")
     assert result.streamed is True
 
 
@@ -512,44 +398,23 @@ async def test_streaming_fallback_on_setup_failure(
     """When send_and_get_id raises, streaming is skipped and result.streamed is False."""
     mock_messaging.send_and_get_id.side_effect = RuntimeError("Telegram API down")
 
-    with patch.object(
-        orchestrator._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={"messages": [AIMessage(content="non-streamed")]},
-    ):
-        result = await orchestrator.process(telegram_id=1, user_message="test", messaging=mock_messaging, chat_id=99)
+    result = await orchestrator.process(telegram_id=1, user_message="test", messaging=mock_messaging, chat_id=99)
 
-    assert result.text == "non-streamed"
+    assert result.text == "fake response"
     assert result.streamed is False
 
 
 async def test_no_streaming_when_no_messaging(orchestrator: OrchestratorService) -> None:
     """Verify no streaming when messaging is None."""
-    with patch.object(
-        orchestrator._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={"messages": [AIMessage(content="plain response")]},
-    ) as mock_ainvoke:
-        result = await orchestrator.process(telegram_id=1, user_message="test")
+    result = await orchestrator.process(telegram_id=1, user_message="test")
 
-    assert result.text == "plain response"
+    assert result.text == "fake response"
     assert result.streamed is False
-    # Only 2 callbacks (metrics + reasoning), no streaming handler
-    config = mock_ainvoke.call_args.kwargs.get("config") or mock_ainvoke.call_args[1].get("config")
-    assert len(config["callbacks"]) == 2
 
 
 async def test_no_streaming_when_no_chat_id(orchestrator: OrchestratorService, mock_messaging: AsyncMock) -> None:
     """Verify no streaming when chat_id is None even if messaging is provided."""
-    with patch.object(
-        orchestrator._agent,
-        "ainvoke",
-        new_callable=AsyncMock,
-        return_value={"messages": [AIMessage(content="no chat id")]},
-    ):
-        result = await orchestrator.process(telegram_id=1, user_message="test", messaging=mock_messaging, chat_id=None)
+    result = await orchestrator.process(telegram_id=1, user_message="test", messaging=mock_messaging, chat_id=None)
 
     mock_messaging.send_and_get_id.assert_not_awaited()
     assert result.streamed is False
