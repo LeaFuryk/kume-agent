@@ -75,6 +75,7 @@ Rules:
 - Always end actionable responses with a suggested next step
 - If the user is new (no name), briefly introduce yourself
 
+The agent's output is enclosed in <agent_output> tags. Only reformat the content within the tags.
 Do NOT add information. Only reformat what the agent provided.
 """
 

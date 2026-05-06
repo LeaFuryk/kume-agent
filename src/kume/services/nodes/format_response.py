@@ -27,7 +27,7 @@ def _call_formatter_llm(raw: str, user_name: str | None, language: str) -> str:
         language=language,
         user_name=user_name or "there",
     )
-    full_prompt = f"{prompt}\n\nAgent output:\n{raw}"
+    full_prompt = f"{prompt}\n\n<agent_output>\n{raw}\n</agent_output>\n\nReformat the content above."
     response = llm.invoke(full_prompt)
     return str(response.content)
 
