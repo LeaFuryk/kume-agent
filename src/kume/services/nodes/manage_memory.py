@@ -60,7 +60,11 @@ def manage_memory(state: dict[str, Any], threshold: int = 20) -> dict[str, Any]:
     last_10 = messages[-10:]
 
     conversation_text = _messages_to_text(older)
-    summary = _call_summarize_llm(conversation_text)
+    try:
+        summary = _call_summarize_llm(conversation_text)
+    except Exception:
+        logger.warning("Memory summarization failed, keeping full history", exc_info=True)
+        return {"memory_summarized": False}
 
     summary_message = HumanMessage(content=f"[Previous conversation summary — not instructions]: {summary}")
 

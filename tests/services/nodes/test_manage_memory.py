@@ -78,3 +78,17 @@ class TestManageMemory:
         assert result["memory_summarized"] is True
         assert "messages" in result
         assert isinstance(result["messages"][0], HumanMessage)
+
+    def test_llm_failure_falls_back(self) -> None:
+        """LLM failure during summarization falls back to original messages."""
+        messages = [HumanMessage(content=f"Msg {i}") for i in range(30)]
+        state = {"messages": messages}
+
+        with patch(
+            "kume.services.nodes.manage_memory._call_summarize_llm",
+            side_effect=RuntimeError("API down"),
+        ):
+            result = manage_memory(state, threshold=20)
+
+        assert result["memory_summarized"] is False
+        assert "messages" not in result  # original messages unchanged
