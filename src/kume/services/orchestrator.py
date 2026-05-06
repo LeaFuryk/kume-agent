@@ -230,7 +230,8 @@ class OrchestratorService:
                     "formatted_response": "",
                     "memory_summarized": False,
                     "tool_error_count": 0,
-                }
+                },
+                config={"recursion_limit": self._max_iterations * 2},
             )
             response_text = result.get("formatted_response", "")
 

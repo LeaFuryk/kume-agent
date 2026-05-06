@@ -88,7 +88,7 @@ async def test_process_sets_request_context_via_contextvar() -> None:
 
     captured_ctx = None
 
-    async def capture_context(state: dict[str, Any]) -> dict:
+    async def capture_context(state: dict[str, Any], **kwargs: Any) -> dict:
         nonlocal captured_ctx
         captured_ctx = get_context()
         return {"formatted_response": "ok"}
@@ -123,6 +123,29 @@ async def test_graph_receives_state_fields() -> None:
     assert state["formatted_response"] == ""
     assert state["memory_summarized"] is False
     assert state["tool_error_count"] == 0
+
+
+async def test_graph_receives_recursion_limit() -> None:
+    """Verify the graph is invoked with recursion_limit based on max_iterations."""
+    mock_graph = _make_mock_graph("response")
+    orch = OrchestratorService(graph=mock_graph, max_iterations=8)
+
+    await orch.process(telegram_id=1, user_message="test")
+
+    mock_graph.ainvoke.assert_called_once()
+    config = mock_graph.ainvoke.call_args[1]["config"]
+    assert config["recursion_limit"] == 16  # max_iterations * 2
+
+
+async def test_graph_default_recursion_limit() -> None:
+    """Verify default max_iterations=5 yields recursion_limit=10."""
+    mock_graph = _make_mock_graph("response")
+    orch = OrchestratorService(graph=mock_graph)
+
+    await orch.process(telegram_id=1, user_message="test")
+
+    config = mock_graph.ainvoke.call_args[1]["config"]
+    assert config["recursion_limit"] == 10
 
 
 # --- _extract_text_content tests ---
@@ -226,7 +249,7 @@ async def test_images_set_and_cleared() -> None:
     ]
 
     # Intercept to check images are set during invocation
-    async def check_images_set(state: dict[str, Any]) -> dict:
+    async def check_images_set(state: dict[str, Any], **kwargs: Any) -> dict:
         # Images should be stored at this point (before clear)
         assert image_store._data  # at least one request_id has images
         return {"formatted_response": "analyzed"}
@@ -308,7 +331,7 @@ async def test_language_sets_request_context() -> None:
 
     captured_ctx = None
 
-    async def capture_context(state: dict[str, Any]) -> dict:
+    async def capture_context(state: dict[str, Any], **kwargs: Any) -> dict:
         nonlocal captured_ctx
         captured_ctx = get_context()
         return {"formatted_response": "ok"}
@@ -329,7 +352,7 @@ async def test_language_defaults_to_en_when_none() -> None:
 
     captured_ctx = None
 
-    async def capture_context(state: dict[str, Any]) -> dict:
+    async def capture_context(state: dict[str, Any], **kwargs: Any) -> dict:
         nonlocal captured_ctx
         captured_ctx = get_context()
         return {"formatted_response": "ok"}
