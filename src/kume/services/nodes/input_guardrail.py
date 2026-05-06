@@ -45,8 +45,8 @@ def input_guardrail(state: dict[str, Any]) -> dict[str, Any]:
     message is safe.  On a detected threat, ``input_safe=False`` and
     ``guardrail_violation`` is set to the threat category string.
 
-    Fails open: if the LLM response is malformed JSON, the message is
-    treated as safe.
+    Fails closed: if the LLM response is malformed JSON, the message is
+    blocked as a precaution to prevent guardrail bypass.
     """
     # Extract the last HumanMessage
     messages = state.get("messages", [])
@@ -62,10 +62,10 @@ def input_guardrail(state: dict[str, Any]) -> dict[str, Any]:
         parsed = json.loads(raw)
         is_safe = parsed.get("safe", True)
         category = parsed.get("category") if not is_safe else None
-    except (json.JSONDecodeError, TypeError, AttributeError):
-        logger.warning("Malformed guardrail response, defaulting to safe: %s", raw)
-        is_safe = True
-        category = None
+    except (json.JSONDecodeError, KeyError, TypeError):
+        logger.warning("Input guardrail returned malformed response, blocking as precaution: %s", raw)
+        is_safe = False
+        category = "guardrail_error"
 
     return {
         "input_safe": is_safe,

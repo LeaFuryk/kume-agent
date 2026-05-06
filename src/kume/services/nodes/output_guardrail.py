@@ -51,8 +51,8 @@ def output_guardrail(state: dict[str, Any]) -> dict[str, Any]:
     response is safe.  On a detected issue, ``output_safe=False`` and
     ``guardrail_violation`` is set to the issue category.
 
-    Fails open: if the LLM response is malformed JSON, the response is
-    treated as safe.
+    Fails closed: if the LLM response is malformed JSON, the response is
+    blocked as a precaution to prevent guardrail bypass.
     """
     # Prefer formatted_response (set by format_response node upstream),
     # fall back to raw_agent_response or last AIMessage.
@@ -72,10 +72,10 @@ def output_guardrail(state: dict[str, Any]) -> dict[str, Any]:
         parsed = json.loads(raw)
         is_safe = parsed.get("safe", True)
         category = parsed.get("category") if not is_safe else None
-    except (json.JSONDecodeError, TypeError, AttributeError):
-        logger.warning("Malformed guardrail response, defaulting to safe: %s", raw)
-        is_safe = True
-        category = None
+    except (json.JSONDecodeError, KeyError, TypeError):
+        logger.warning("Output guardrail returned malformed response, blocking as precaution: %s", raw)
+        is_safe = False
+        category = "guardrail_error"
 
     return {
         "output_safe": is_safe,

@@ -134,8 +134,8 @@ class TestOutputGuardrail:
 
         mock_llm.assert_called_once_with("Raw answer")
 
-    def test_malformed_json_defaults_to_safe(self) -> None:
-        """When the LLM returns unparseable JSON, fail open (treat as safe)."""
+    def test_malformed_json_fails_closed(self) -> None:
+        """When the LLM returns unparseable JSON, fail closed (block as precaution)."""
         state = {
             "formatted_response": "Take vitamin D.",
             "messages": [
@@ -150,5 +150,5 @@ class TestOutputGuardrail:
         ):
             result = output_guardrail(state)
 
-        assert result["output_safe"] is True
-        assert result["guardrail_violation"] is None
+        assert result["output_safe"] is False
+        assert result["guardrail_violation"] == "guardrail_error"

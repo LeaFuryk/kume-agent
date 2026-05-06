@@ -67,8 +67,8 @@ class TestInputGuardrail:
         assert result["input_safe"] is False
         assert result["guardrail_violation"] == "data_extraction"
 
-    def test_malformed_json_defaults_to_safe(self) -> None:
-        """When the LLM returns unparseable JSON, fail open (treat as safe)."""
+    def test_malformed_json_fails_closed(self) -> None:
+        """When the LLM returns unparseable JSON, fail closed (block as precaution)."""
         state = {"messages": [HumanMessage(content="What vitamins should I take?")]}
 
         with patch(
@@ -77,5 +77,5 @@ class TestInputGuardrail:
         ):
             result = input_guardrail(state)
 
-        assert result["input_safe"] is True
-        assert result["guardrail_violation"] is None
+        assert result["input_safe"] is False
+        assert result["guardrail_violation"] == "guardrail_error"
