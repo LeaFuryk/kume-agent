@@ -8,10 +8,21 @@ from kume.domain.nutrition_summary import NutritionTotals, aggregate_nutrition, 
 
 def _make_meal(**overrides: object) -> Meal:
     defaults = dict(
-        id="m1", user_id="u1", description="test meal",
-        calories=500.0, protein_g=30.0, carbs_g=60.0, fat_g=20.0, fiber_g=5.0,
-        sodium_mg=400.0, sugar_g=10.0, saturated_fat_g=5.0, cholesterol_mg=50.0,
-        confidence=0.9, image_present=False, logged_at=datetime.now(UTC),
+        id="m1",
+        user_id="u1",
+        description="test meal",
+        calories=500.0,
+        protein_g=30.0,
+        carbs_g=60.0,
+        fat_g=20.0,
+        fiber_g=5.0,
+        sodium_mg=400.0,
+        sugar_g=10.0,
+        saturated_fat_g=5.0,
+        cholesterol_mg=50.0,
+        confidence=0.9,
+        image_present=False,
+        logged_at=datetime.now(UTC),
     )
     defaults.update(overrides)
     return Meal(**defaults)

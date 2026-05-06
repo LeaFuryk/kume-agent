@@ -66,12 +66,12 @@ def build_graph(
     def memory_node(state: dict[str, Any]) -> dict[str, Any]:
         return manage_memory(state, threshold=memory_threshold)
 
-    graph.add_node("manage_memory", memory_node)
-    graph.add_node("input_guardrail", input_guardrail)
-    graph.add_node("agent", agent_runnable)
-    graph.add_node("output_guardrail", output_guardrail)
-    graph.add_node("format_response", format_response)
-    graph.add_node("block_response", block_response)
+    graph.add_node("manage_memory", memory_node)  # type: ignore[type-var]
+    graph.add_node("input_guardrail", input_guardrail)  # type: ignore[type-var]
+    graph.add_node("agent", agent_runnable)  # type: ignore[type-var]
+    graph.add_node("output_guardrail", output_guardrail)  # type: ignore[type-var]
+    graph.add_node("format_response", format_response)  # type: ignore[type-var]
+    graph.add_node("block_response", block_response)  # type: ignore[type-var]
 
     graph.set_entry_point("manage_memory")
     graph.add_edge("manage_memory", "input_guardrail")
