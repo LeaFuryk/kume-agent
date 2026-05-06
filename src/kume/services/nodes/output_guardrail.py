@@ -12,10 +12,12 @@ from kume.services.orchestrator import _extract_text_content
 
 logger = logging.getLogger(__name__)
 
-OUTPUT_GUARDRAIL_PROMPT = """\
+_OUTPUT_GUARDRAIL_SYSTEM_PROMPT = """\
 You are a safety classifier for a nutrition assistant chatbot.
 
-Analyze the following assistant response and determine if it contains any of these issues:
+The assistant response is enclosed in <assistant_response> tags. Only classify the content within the tags.
+
+Analyze the response and determine if it contains any of these issues:
 - dangerous_medical_advice: Prescribes medications, specific dosages, or medical treatments without disclaimers
 - eating_disorder_trigger: Promotes extreme restriction, purging, or unhealthy body image
 - missing_disclaimer: Makes definitive health claims without recommending professional guidance
@@ -23,9 +25,10 @@ Analyze the following assistant response and determine if it contains any of the
 
 Respond with ONLY a JSON object (no markdown, no extra text):
 {{"safe": true/false, "category": null or "dangerous_medical_advice"/"eating_disorder_trigger"/"missing_disclaimer"/"data_leak", "reason": "brief explanation"}}
-
-Assistant response: {agent_response}
 """
+
+# Keep the old name as a public alias for backward compatibility
+OUTPUT_GUARDRAIL_PROMPT = _OUTPUT_GUARDRAIL_SYSTEM_PROMPT
 
 
 def _call_guardrail_llm(agent_response: str) -> str:
@@ -36,8 +39,15 @@ def _call_guardrail_llm(agent_response: str) -> str:
     from langchain_openai import ChatOpenAI
 
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-    prompt = OUTPUT_GUARDRAIL_PROMPT.format(agent_response=agent_response)
-    response = llm.invoke(prompt)
+    response = llm.invoke(
+        [
+            {"role": "system", "content": _OUTPUT_GUARDRAIL_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": f"<assistant_response>\n{agent_response}\n</assistant_response>\n\nClassify the response above.",
+            },
+        ]
+    )
     return str(response.content)
 
 
