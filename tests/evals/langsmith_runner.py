@@ -249,7 +249,7 @@ def _build_orchestrator():  # type: ignore[no-untyped-def]
         AnalyzeFoodTool(llm=tool_llm, context_builder=cb),
         AnalyzeFoodImageTool(vision=FakeVisionPort(), context_builder=cb, image_store=image_store),
         LogMealTool(meal_repo=FakeMealRepository()),
-        RequestReportTool(),
+        RequestReportTool(meal_repo=FakeMealRepository(), goal_repo=FakeGoalRepository()),
         SaveGoalTool(goal_repo=FakeGoalRepository()),
         SaveRestrictionTool(restriction_repo=FakeRestrictionRepository()),
         SaveHealthContextTool(doc_repo=FakeDocumentRepository(), embedding_repo=FakeEmbeddingRepository()),

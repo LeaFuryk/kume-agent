@@ -224,7 +224,7 @@ class Container:
                 image_store=self._image_store,
             ),
             LogMealTool(meal_repo=self.meal_repo()),
-            RequestReportTool(),
+            RequestReportTool(meal_repo=self.meal_repo(), goal_repo=self.goal_repo()),
             SaveGoalTool(goal_repo=self.goal_repo()),
             SaveRestrictionTool(restriction_repo=self.restriction_repo()),
             SaveHealthContextTool(doc_repo=self.doc_repo(), embedding_repo=self.embedding_repo()),
