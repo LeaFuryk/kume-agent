@@ -51,6 +51,7 @@ def build_graph(
     agent_runnable: Any = None,
     tools: list[Any] | None = None,
     memory_threshold: int = 20,
+    enable_guardrails: bool = False,
 ) -> Any:
     """Build and compile the Kume agent graph.
 
@@ -64,6 +65,10 @@ def build_graph(
     memory_threshold:
         Number of messages before the memory management node triggers
         summarization.
+    enable_guardrails:
+        When True, adds input/output guardrail nodes and a format_response
+        node (3 extra LLM calls per request). When False (default), the
+        graph runs: set_context → manage_memory → agent → END.
 
     Returns
     -------
@@ -77,27 +82,35 @@ def build_graph(
 
     graph.add_node("set_context", set_request_context)  # type: ignore[type-var]
     graph.add_node("manage_memory", memory_node)  # type: ignore[type-var]
-    graph.add_node("input_guardrail", input_guardrail)  # type: ignore[type-var]
     graph.add_node("agent", agent_runnable)  # type: ignore[type-var]
-    graph.add_node("output_guardrail", output_guardrail)  # type: ignore[type-var]
-    graph.add_node("format_response", format_response)  # type: ignore[type-var]
-    graph.add_node("block_response", block_response)  # type: ignore[type-var]
 
     graph.set_entry_point("set_context")
     graph.add_edge("set_context", "manage_memory")
-    graph.add_edge("manage_memory", "input_guardrail")
-    graph.add_conditional_edges(
-        "input_guardrail",
-        _route_after_input_guardrail,
-        {"agent": "agent", "block_response": "block_response"},
-    )
-    graph.add_edge("agent", "format_response")
-    graph.add_edge("format_response", "output_guardrail")
-    graph.add_conditional_edges(
-        "output_guardrail",
-        _route_after_output_guardrail,
-        {END: END, "block_response": "block_response"},
-    )
-    graph.add_edge("block_response", END)
+
+    if enable_guardrails:
+        # Full pipeline with guardrails + formatter
+        graph.add_node("input_guardrail", input_guardrail)  # type: ignore[type-var]
+        graph.add_node("output_guardrail", output_guardrail)  # type: ignore[type-var]
+        graph.add_node("format_response", format_response)  # type: ignore[type-var]
+        graph.add_node("block_response", block_response)  # type: ignore[type-var]
+
+        graph.add_edge("manage_memory", "input_guardrail")
+        graph.add_conditional_edges(
+            "input_guardrail",
+            _route_after_input_guardrail,
+            {"agent": "agent", "block_response": "block_response"},
+        )
+        graph.add_edge("agent", "format_response")
+        graph.add_edge("format_response", "output_guardrail")
+        graph.add_conditional_edges(
+            "output_guardrail",
+            _route_after_output_guardrail,
+            {END: END, "block_response": "block_response"},
+        )
+        graph.add_edge("block_response", END)
+    else:
+        # Lean pipeline — no guardrails, no formatter LLM call
+        graph.add_edge("manage_memory", "agent")
+        graph.add_edge("agent", END)
 
     return graph.compile()

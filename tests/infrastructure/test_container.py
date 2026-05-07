@@ -34,6 +34,7 @@ def settings() -> Settings:
         pinecone_index="kume-documents",
         memory_summary_threshold=20,
         max_tool_errors=2,
+        enable_guardrails=False,
     )
 
 

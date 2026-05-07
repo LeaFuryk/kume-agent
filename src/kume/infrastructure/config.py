@@ -18,6 +18,7 @@ class Settings:
     pinecone_index: str
     memory_summary_threshold: int
     max_tool_errors: int
+    enable_guardrails: bool
 
     @staticmethod
     def _normalize_db_url(url: str) -> str:
@@ -57,4 +58,5 @@ class Settings:
             pinecone_index=os.environ.get("PINECONE_INDEX", "kume-documents"),
             memory_summary_threshold=int(os.environ.get("MEMORY_SUMMARY_THRESHOLD", "20")),
             max_tool_errors=int(os.environ.get("MAX_TOOL_ERRORS", "2")),
+            enable_guardrails=os.environ.get("ENABLE_GUARDRAILS", "false").lower() in ("true", "1", "yes"),
         )

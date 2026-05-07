@@ -261,6 +261,7 @@ class Container:
             agent_runnable=agent,
             tools=tools,
             memory_threshold=self._settings.memory_summary_threshold,
+            enable_guardrails=self._settings.enable_guardrails,
         )
 
     def orchestrator_service(self) -> OrchestratorService:

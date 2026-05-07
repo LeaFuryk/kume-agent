@@ -13,10 +13,10 @@ import logging
 
 from dotenv import load_dotenv
 
-from kume.infrastructure.config import Settings
-
 load_dotenv()
-from kume.infrastructure.container import Container
+
+from kume.infrastructure.config import Settings  # noqa: E402
+from kume.infrastructure.container import Container  # noqa: E402
 
 try:
     settings = Settings.from_env()

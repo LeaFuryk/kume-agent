@@ -50,3 +50,4 @@ Thumbs.db
 *.db
 *.sqlite3
 .claude/
+.langgraph_api/

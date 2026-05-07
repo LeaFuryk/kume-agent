@@ -236,7 +236,15 @@ class OrchestratorService:
                 # format_response, output_guardrail)
                 config={"recursion_limit": max(self._max_iterations * 2 + 5, 10)},
             )
+            # In lean mode (no guardrails), formatted_response is empty —
+            # fall back to extracting text from the last AIMessage.
             response_text = result.get("formatted_response", "")
+            if not response_text.strip():
+                messages = result.get("messages", [])
+                for msg in reversed(messages):
+                    if isinstance(msg, AIMessage):
+                        response_text = _extract_text_content(msg.content)
+                        break
             input_was_safe = result.get("input_safe", True)
 
             if response_text.strip():
