@@ -1,0 +1,8 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "kume": "./src/kume/graph_entry.py:graph"
+  },
+  "env": ".env",
+  "python_version": "3.11"
+}

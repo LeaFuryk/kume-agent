@@ -30,6 +30,11 @@ def settings() -> Settings:
         database_url="postgresql+asyncpg://kume:kume@localhost:5432/kume",
         openai_embedding_model="text-embedding-3-small",
         log_format="pretty",
+        pinecone_api_key="",
+        pinecone_index="kume-documents",
+        memory_summary_threshold=20,
+        max_tool_errors=2,
+        enable_guardrails=False,
     )
 
 
@@ -91,14 +96,15 @@ def test_tools_returns_twelve_tools(container: Container) -> None:
     }
 
 
-@patch("kume.services.orchestrator.create_agent")
-def test_orchestrator_service_passes_max_iterations(mock_create_agent, container: Container) -> None:
+@patch("kume.infrastructure.container.build_kume_graph")
+@patch("langgraph.prebuilt.create_react_agent")
+def test_orchestrator_service_passes_max_iterations(mock_create_agent, mock_build_graph, container: Container) -> None:
     from kume.services.orchestrator import OrchestratorService
 
     service = container.orchestrator_service()
     assert isinstance(service, OrchestratorService)
     assert service._max_iterations == 5
-    mock_create_agent.assert_called_once()
+    mock_build_graph.assert_called_once()
 
 
 def test_telegram_application_method_exists(container: Container) -> None:
@@ -159,8 +165,11 @@ def test_tools_include_context_builder_in_ask_recommendation_and_analyze_food(co
     assert isinstance(analyze.context_builder, ContextBuilder)
 
 
-@patch("kume.services.orchestrator.create_agent")
-def test_telegram_application_registers_media_handler(mock_create_agent, container: Container) -> None:
+@patch("kume.infrastructure.container.build_kume_graph")
+@patch("langgraph.prebuilt.create_react_agent")
+def test_telegram_application_registers_media_handler(
+    mock_create_agent, mock_build_graph, container: Container
+) -> None:
     app = container.telegram_application()
     handlers = app.handlers[0]  # default group 0
     assert len(handlers) == 2

@@ -15,6 +15,7 @@ from kume.adapters.output.langchain_llm import LangChainLLMAdapter
 from kume.adapters.output.openai_vision import OpenAIVisionAdapter
 from kume.adapters.output.pdf_processor import PDFProcessor
 from kume.adapters.output.pgvector_embedding import PGVectorEmbeddingRepository
+from kume.adapters.output.pinecone_embedding import PineconeEmbeddingRepository
 from kume.adapters.output.postgres_db import (
     PostgresDocumentRepository,
     PostgresGoalRepository,
@@ -55,8 +56,10 @@ from kume.ports.output.repositories import (
     UserRepository,
 )
 from kume.ports.output.vision import VisionPort
+from kume.services.graph import build_graph as build_kume_graph
 from kume.services.ingestion import IngestionService
 from kume.services.orchestrator import OrchestratorService
+from kume.services.prompts import AGENT_SYSTEM_PROMPT
 
 
 class _RepositoryContextDataProvider(ContextDataProvider):
@@ -137,11 +140,19 @@ class Container:
 
     def embedding_repo(self) -> EmbeddingRepository:
         if self._embedding_repo is None:
-            self._embedding_repo = PGVectorEmbeddingRepository(
-                database_url=self._settings.database_url,
-                openai_api_key=self._settings.openai_api_key,
-                embedding_model=self._settings.openai_embedding_model,
-            )
+            if self._settings.pinecone_api_key:
+                self._embedding_repo = PineconeEmbeddingRepository(
+                    api_key=self._settings.pinecone_api_key,
+                    index_name=self._settings.pinecone_index,
+                    openai_api_key=self._settings.openai_api_key,
+                    embedding_model=self._settings.openai_embedding_model,
+                )
+            else:
+                self._embedding_repo = PGVectorEmbeddingRepository(
+                    database_url=self._settings.database_url,
+                    openai_api_key=self._settings.openai_api_key,
+                    embedding_model=self._settings.openai_embedding_model,
+                )
         return self._embedding_repo
 
     # --- LLM ---
@@ -224,7 +235,7 @@ class Container:
                 image_store=self._image_store,
             ),
             LogMealTool(meal_repo=self.meal_repo()),
-            RequestReportTool(),
+            RequestReportTool(meal_repo=self.meal_repo(), goal_repo=self.goal_repo()),
             SaveGoalTool(goal_repo=self.goal_repo()),
             SaveRestrictionTool(restriction_repo=self.restriction_repo()),
             SaveHealthContextTool(doc_repo=self.doc_repo(), embedding_repo=self.embedding_repo()),
@@ -239,10 +250,23 @@ class Container:
             FetchLabResultsTool(marker_repo=self.marker_repo()),
         ]
 
+    def build_graph(self) -> Any:
+        """Build the full LangGraph pipeline with a ReAct agent and guardrails."""
+        from langgraph.prebuilt import create_react_agent
+
+        llm = self.orchestrator_llm()
+        tools = self.tools()
+        agent = create_react_agent(model=llm, tools=tools, prompt=AGENT_SYSTEM_PROMPT)
+        return build_kume_graph(
+            agent_runnable=agent,
+            tools=tools,
+            memory_threshold=self._settings.memory_summary_threshold,
+            enable_guardrails=self._settings.enable_guardrails,
+        )
+
     def orchestrator_service(self) -> OrchestratorService:
         return OrchestratorService(
-            llm=self.orchestrator_llm(),
-            tools=self.tools(),
+            graph=self.build_graph(),
             max_iterations=self._settings.max_agent_iterations,
             user_repo=self.user_repo(),
             session_store=self._session_store,

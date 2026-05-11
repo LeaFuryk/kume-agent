@@ -6,14 +6,10 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from langchain.agents import create_agent
-from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.tools import BaseTool
 
 from kume.domain.conversation import ConversationEvent
 from kume.infrastructure.image_store import ImageStore
-from kume.infrastructure.metrics import MetricsCallbackHandler, MetricsCollector, ReasoningCallbackHandler
 from kume.infrastructure.request_context import (
     RequestContext,
     set_context,
@@ -24,7 +20,6 @@ from kume.infrastructure.request_context import (
 from kume.infrastructure.session_store import SessionStore
 from kume.ports.output.messaging import MessagingPort
 from kume.ports.output.repositories import UserRepository
-from kume.services.prompts import SYSTEM_PROMPT
 
 logger = logging.getLogger("kume.orchestrator")
 
@@ -68,31 +63,23 @@ def _extract_text_content(content: Any) -> str:
 class OrchestratorService:
     """Application service that owns the agentic tool-use loop.
 
-    Creates a LangChain agent and manages per-request metrics collection.
-    A fresh MetricsCollector is created for each request to ensure thread safety
-    when handling concurrent Telegram updates.
+    Delegates to a compiled LangGraph pipeline for agent execution,
+    guardrails, memory management, and response formatting.
     """
 
     def __init__(
         self,
-        llm: BaseChatModel,
-        tools: list[BaseTool],
-        system_prompt: str = SYSTEM_PROMPT,
+        graph: Any,
         max_iterations: int = 5,
         user_repo: UserRepository | None = None,
         session_store: SessionStore | None = None,
         image_store: ImageStore | None = None,
     ) -> None:
         self._max_iterations = max_iterations
-        self._tools = tools
+        self._graph = graph
         self._user_repo = user_repo
         self._session_store = session_store
         self._image_store = image_store
-        self._agent = create_agent(
-            model=llm,
-            tools=tools,
-            system_prompt=system_prompt,
-        )
 
     async def _resolve_user(self, telegram_id: int, user_name: str | None = None, language: str | None = None) -> str:
         """Resolve telegram_id to internal user, set request context, return message prefix.
@@ -133,12 +120,7 @@ class OrchestratorService:
         messaging: MessagingPort | None = None,
         chat_id: int | None = None,
     ) -> ProcessResult:
-        """Process a user message through the agentic loop and return the response."""
-        collector = MetricsCollector()
-        collector.start_request(telegram_id, user_name=user_name)
-        callback_handler = MetricsCallbackHandler(collector)
-        reasoning_handler = ReasoningCallbackHandler(user_name=user_name)
-
+        """Process a user message through the LangGraph pipeline and return the response."""
         parts: list[str] = []
 
         # Language instruction — tell the LLM which language to respond in
@@ -224,9 +206,6 @@ class OrchestratorService:
         # Build messages with history + current message
         messages = history_messages + [HumanMessage(content=full_message)]
 
-        # Log user message for reasoning chain
-        reasoning_handler.log_user_message(user_message or "(no text)", user_name)
-
         # Send a "thinking" placeholder if messaging is available.
         # After ainvoke completes, we edit the placeholder with the final response.
         # (True token-by-token streaming requires astream, which is a future enhancement.)
@@ -238,57 +217,77 @@ class OrchestratorService:
                 logger.warning("Failed to send placeholder, will send response normally", exc_info=True)
 
         try:
-            callbacks = [callback_handler, reasoning_handler]
+            result = await self._graph.ainvoke(
+                {
+                    "messages": messages,
+                    "user_id": user_id,
+                    "user_name": user_name,
+                    "user_language": language or "en",
+                    "input_safe": True,
+                    "output_safe": True,
+                    "guardrail_violation": None,
+                    "raw_agent_response": "",
+                    "formatted_response": "",
+                    "memory_summarized": False,
+                    "tool_error_count": 0,
+                },
+                # Each agent iteration = 2 recursion steps (model call + tool call)
+                # Plus 5 fixed nodes (set_context, manage_memory, input_guardrail,
+                # format_response, output_guardrail)
+                config={"recursion_limit": max(self._max_iterations * 2 + 5, 10)},
+            )
+            # In lean mode (no guardrails), formatted_response is empty —
+            # fall back to extracting text from the last AIMessage.
+            response_text = result.get("formatted_response", "")
+            if not response_text.strip():
+                messages = result.get("messages", [])
+                for msg in reversed(messages):
+                    if isinstance(msg, AIMessage):
+                        response_text = _extract_text_content(msg.content)
+                        break
+            input_was_safe = result.get("input_safe", True)
 
-            agent_input: dict[str, Any] = {"messages": messages}
-            agent_config: dict[str, Any] = {
-                "callbacks": callbacks,
-                "recursion_limit": self._max_iterations * 2,
-            }
-            result = await self._agent.ainvoke(agent_input, config=agent_config)  # type: ignore[call-overload]
-            resp_messages = result.get("messages", [])
-            if resp_messages:
-                response_text = _extract_text_content(resp_messages[-1].content)
-                if response_text.strip():
-                    reasoning_handler.log_response(response_text)
-                    # Save conversation events to SessionStore
-                    # Use a compact summary for session history to avoid replaying
-                    # full resource transcripts (PDFs, OCR) on subsequent turns.
-                    if self._session_store and user_id:
-                        now = datetime.now(UTC)
-                        history_content = user_message or ""
-                        if resources:
-                            resource_types = [r.mime_type for r in resources]
-                            history_content += f" [+ {len(resources)} attachment(s): {', '.join(resource_types)}]"
-                        self._session_store.add(
-                            user_id,
-                            ConversationEvent(
-                                id=str(uuid4()),
-                                user_id=user_id,
-                                role="user",
-                                content=history_content.strip(),
-                                created_at=now,
-                            ),
-                        )
-                        self._session_store.add(
-                            user_id,
-                            ConversationEvent(
-                                id=str(uuid4()),
-                                user_id=user_id,
-                                role="assistant",
-                                content=response_text,
-                                created_at=now,
-                            ),
-                        )
-                    # Edit the placeholder with the final response
-                    streamed = False
-                    if placeholder_message_id and messaging and chat_id:
-                        try:
-                            await messaging.edit_message(chat_id, placeholder_message_id, response_text)
-                            streamed = True
-                        except Exception:
-                            logger.warning("Failed to edit placeholder, will send as new message", exc_info=True)
-                    return ProcessResult(text=response_text, streamed=streamed)
+            if response_text.strip():
+                # Save conversation events to SessionStore
+                # Use a compact summary for session history to avoid replaying
+                # full resource transcripts (PDFs, OCR) on subsequent turns.
+                # Only persist if the input was not blocked by the guardrail,
+                # so blocked injection text doesn't pollute session history.
+                if self._session_store and user_id and input_was_safe:
+                    now = datetime.now(UTC)
+                    history_content = user_message or ""
+                    if resources:
+                        resource_types = [r.mime_type for r in resources]
+                        history_content += f" [+ {len(resources)} attachment(s): {', '.join(resource_types)}]"
+                    self._session_store.add(
+                        user_id,
+                        ConversationEvent(
+                            id=str(uuid4()),
+                            user_id=user_id,
+                            role="user",
+                            content=history_content.strip(),
+                            created_at=now,
+                        ),
+                    )
+                    self._session_store.add(
+                        user_id,
+                        ConversationEvent(
+                            id=str(uuid4()),
+                            user_id=user_id,
+                            role="assistant",
+                            content=response_text,
+                            created_at=now,
+                        ),
+                    )
+                # Edit the placeholder with the final response
+                streamed = False
+                if placeholder_message_id and messaging and chat_id:
+                    try:
+                        await messaging.edit_message(chat_id, placeholder_message_id, response_text)
+                        streamed = True
+                    except Exception:
+                        logger.warning("Failed to edit placeholder, will send as new message", exc_info=True)
+                return ProcessResult(text=response_text, streamed=streamed)
             return ProcessResult(text="I wasn't able to process that request.", streamed=False)
         except Exception:
             logger.exception("Error processing message for telegram_id=%d", telegram_id)
@@ -299,4 +298,3 @@ class OrchestratorService:
             if self._image_store:
                 self._image_store.clear(request_id)
             set_context(None)  # type: ignore[arg-type]  # clear stale user context
-            collector.end_request()

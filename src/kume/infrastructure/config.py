@@ -14,13 +14,25 @@ class Settings:
     database_url: str
     openai_embedding_model: str
     log_format: str
+    pinecone_api_key: str
+    pinecone_index: str
+    memory_summary_threshold: int
+    max_tool_errors: int
+    enable_guardrails: bool
+
+    @staticmethod
+    def _normalize_db_url(url: str) -> str:
+        """Ensure the database URL uses the asyncpg driver."""
+        if url.startswith("postgresql://"):
+            return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return url
 
     @classmethod
     def from_env(cls) -> "Settings":
         telegram_token = os.environ.get("TELEGRAM_TOKEN", "")
         openai_api_key = os.environ.get("OPENAI_API_KEY", "")
-        if not telegram_token:
-            raise ValueError("TELEGRAM_TOKEN environment variable is required")
+        # telegram_token is only required when running the Telegram bot,
+        # not when deploying the graph to LangGraph Platform
         if not openai_api_key:
             raise ValueError("OPENAI_API_KEY environment variable is required")
         max_iterations = int(os.environ.get("MAX_AGENT_ITERATIONS", "5"))
@@ -34,10 +46,17 @@ class Settings:
             vision_model=os.environ.get("VISION_MODEL", "gpt-4o"),
             max_agent_iterations=max_iterations,
             log_level=os.environ.get("LOG_LEVEL", "INFO"),
-            database_url=os.environ.get(
-                "DATABASE_URL",
-                "postgresql+asyncpg://kume:kume@localhost:5432/kume",
+            database_url=cls._normalize_db_url(
+                os.environ.get(
+                    "DATABASE_URL",
+                    "postgresql+asyncpg://kume:kume@localhost:5432/kume",
+                )
             ),
             openai_embedding_model=os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
             log_format=os.environ.get("LOG_FORMAT", "pretty"),
+            pinecone_api_key=os.environ.get("PINECONE_API_KEY", ""),
+            pinecone_index=os.environ.get("PINECONE_INDEX", "kume-documents"),
+            memory_summary_threshold=int(os.environ.get("MEMORY_SUMMARY_THRESHOLD", "20")),
+            max_tool_errors=int(os.environ.get("MAX_TOOL_ERRORS", "2")),
+            enable_guardrails=os.environ.get("ENABLE_GUARDRAILS", "false").lower() in ("true", "1", "yes"),
         )

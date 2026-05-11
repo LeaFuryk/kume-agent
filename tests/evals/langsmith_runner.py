@@ -201,6 +201,7 @@ def _build_orchestrator():  # type: ignore[no-untyped-def]
     from unittest.mock import AsyncMock
 
     from langchain_openai import ChatOpenAI
+    from langgraph.prebuilt import create_react_agent
     from pydantic import SecretStr
 
     from kume.adapters.tools import (
@@ -218,7 +219,9 @@ def _build_orchestrator():  # type: ignore[no-untyped-def]
     from kume.adapters.tools.fetch_lab_results import FetchLabResultsTool
     from kume.domain.context import ContextBuilder, ContextDataProvider
     from kume.infrastructure.image_store import ImageStore
+    from kume.services.graph import build_graph
     from kume.services.orchestrator import OrchestratorService
+    from kume.services.prompts import AGENT_SYSTEM_PROMPT
     from tests.adapters.tools.conftest import (
         FakeDocumentRepository,
         FakeEmbeddingRepository,
@@ -249,7 +252,7 @@ def _build_orchestrator():  # type: ignore[no-untyped-def]
         AnalyzeFoodTool(llm=tool_llm, context_builder=cb),
         AnalyzeFoodImageTool(vision=FakeVisionPort(), context_builder=cb, image_store=image_store),
         LogMealTool(meal_repo=FakeMealRepository()),
-        RequestReportTool(),
+        RequestReportTool(meal_repo=FakeMealRepository(), goal_repo=FakeGoalRepository()),
         SaveGoalTool(goal_repo=FakeGoalRepository()),
         SaveRestrictionTool(restriction_repo=FakeRestrictionRepository()),
         SaveHealthContextTool(doc_repo=FakeDocumentRepository(), embedding_repo=FakeEmbeddingRepository()),
@@ -258,9 +261,11 @@ def _build_orchestrator():  # type: ignore[no-untyped-def]
         FetchLabResultsTool(marker_repo=FakeLabMarkerRepository()),
     ]
 
+    agent = create_react_agent(model=llm, tools=tools, prompt=AGENT_SYSTEM_PROMPT)
+    graph = build_graph(agent_runnable=agent, tools=tools, memory_threshold=100)
+
     return OrchestratorService(
-        llm=llm,
-        tools=tools,
+        graph=graph,
         max_iterations=5,
         user_repo=FakeUserRepository(),
         image_store=image_store,
